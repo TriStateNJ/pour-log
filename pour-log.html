@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Pour Log — TSCNJ</title>
+<!-- MSAL for Microsoft Graph auth (job list fetch from SharePoint) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+:root {
+  --bg: #faf9f6;       /* warm linen — neutral with a hint of color */
+  --bg-soft: #eaf0f6;  /* soft slate-blue at the bottom */
+  --accent-1: #1e3a5f; /* deep slate-blue for the top accent stripe */
+  --accent-2: #475569;
+  --accent-3: #94755e; /* warm clay for subtle warmth */
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
+  --text-4: #94a3b8;
+  --primary: #2563eb;
+  --primary-2: #1d4ed8;
+  --primary-soft: #eff6ff;
+  --success: #059669;
+  --success-2: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --rose: #be123c;
+  --rose-soft: #fff1f2;
+  --shadow-xs: 0 1px 2px rgba(15,23,42,0.05);
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow:    0 4px 8px -2px rgba(15,23,42,0.08), 0 2px 4px -2px rgba(15,23,42,0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(15,23,42,0.12), 0 4px 8px -2px rgba(15,23,42,0.06);
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius:    12px;
+  --radius-lg: 16px;
+  --t: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+  background-attachment: fixed;
+  color: var(--text-2);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body { padding-bottom: 40px; }
+
+/* Slim accent stripe across the top of every page — adds a hint of color without overwhelming */
+body::before {
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent-1) 0%, var(--accent-2) 60%, var(--accent-3) 100%);
+  z-index: 11;
+  pointer-events: none;
+}
+
+input, select, textarea, button { font-family: inherit; }
+input, select, textarea {
+  padding: 11px 13px; font-size: 15px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  outline: none; width: 100%;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+}
+label {
+  display: block; font-size: 11px; color: var(--text-3); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
+}
+
+.btn {
+  padding: 12px 18px; font-size: 15px; font-weight: 600; border: none;
+  border-radius: var(--radius-sm); cursor: pointer; color: white;
+  letter-spacing: -0.1px;
+  box-shadow: var(--shadow-xs);
+  transition: transform 80ms ease, box-shadow var(--t), background var(--t), color var(--t), border-color var(--t);
+}
+.btn:hover  { box-shadow: var(--shadow-sm); }
+.btn:active { transform: translateY(1px); box-shadow: none; }
+.btn-primary { background: var(--primary); }
+.btn-primary:hover { background: var(--primary-2); }
+.btn-success { background: var(--success); }
+.btn-success:hover { background: var(--success-2); }
+.btn-warn    { background: var(--warning); }
+.btn-danger  { background: var(--danger); }
+.btn-ghost   {
+  background: var(--surface); color: var(--text-3);
+  border: 1px solid var(--border); box-shadow: none;
+}
+.btn-ghost:hover {
+  background: var(--surface-2); color: var(--text-2);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-xs);
+}
+.btn-sm { padding: 8px 12px; font-size: 13px; }
+.btn-lg { padding: 16px 24px; font-size: 17px; border-radius: var(--radius); }
+.btn-block { width: 100%; }
+
+/* SIGN-ON — centered */
+.signon { max-width: 460px; margin: 0 auto; padding: 48px 22px 24px; text-align: center; }
+.signon-logo {
+  display: block; width: 360px; max-width: 92%; height: auto; margin: 0 auto 24px;
+}
+.signon h1 {
+  font-size: 38px; margin: 0 0 8px; color: var(--text);
+  letter-spacing: -1.4px; font-weight: 800; line-height: 1.1;
+}
+.signon .sub { color: var(--text-3); margin-bottom: 32px; font-size: 15px; font-weight: 600; }
+.signon .field { text-align: left; margin-bottom: 18px; }
+.signon .footer-hint { color: var(--text-4); font-size: 12px; margin-top: 18px; }
+
+/* TOPBAR — frosted, 3-column with logo centered */
+.topbar {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(203,213,225,0.6);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar-logo {
+  height: 56px; width: auto; max-width: 100%;
+  justify-self: center; flex-shrink: 0;
+}
+@media (max-width: 600px) { .topbar-logo { height: 44px; } }
+@media (max-width: 380px) { .topbar-logo { height: 36px; } }
+.topbar-left { display: flex; flex-direction: column; min-width: 0; gap: 2px; justify-self: start; max-width: 100%; }
+.bar-operator {
+  font-size: 22px; font-weight: 800; color: var(--text);
+  line-height: 1.15; letter-spacing: -0.4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bar-job {
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-right { display: flex; align-items: center; gap: 8px; justify-self: end; }
+.icon-btn {
+  background: transparent; color: var(--text-3); border: none;
+  font-size: 20px; cursor: pointer; padding: 8px; border-radius: var(--radius-sm);
+  transition: background var(--t), color var(--t);
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text-2); }
+.btn-logout {
+  background: var(--rose-soft); color: var(--rose);
+  border: 1px solid #fecdd3; padding: 9px 14px;
+  font-size: 14px; font-weight: 700; border-radius: var(--radius-sm);
+  cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: background var(--t), box-shadow var(--t);
+}
+.btn-logout:hover { background: #ffe4e6; box-shadow: var(--shadow-sm); }
+@media (max-width: 480px) {
+  .bar-operator { font-size: 18px; }
+  .bar-job { font-size: 12px; }
+  .btn-logout { padding: 7px 11px; font-size: 13px; }
+}
+
+/* TABS */
+.tabs {
+  display: flex;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid rgba(203,213,225,0.6);
+  position: sticky; top: 56px; z-index: 9;
+}
+.tab {
+  flex: 1; padding: 14px 8px; text-align: center; font-weight: 600; cursor: pointer;
+  color: var(--text-3); border-bottom: 2px solid transparent; font-size: 14px;
+  transition: color var(--t), border-color var(--t);
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.badge {
+  display: inline-block; background: var(--primary-soft); color: var(--primary);
+  border-radius: 999px; padding: 1px 8px; font-size: 11px; margin-left: 5px;
+  font-weight: 700;
+}
+.tab.active .badge { background: var(--primary); color: white; }
+
+.page { display: none; padding: 20px 18px; max-width: 1200px; margin: 0 auto; }
+.page.active { display: block; }
+
+/* LANES */
+.lanes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.lane {
+  background: var(--surface); border-radius: var(--radius-lg); padding: 18px;
+  border: 1px solid var(--border);
+  display: flex; flex-direction: column; min-height: 280px;
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
+  position: relative; overflow: hidden;
+}
+.lane:hover { box-shadow: var(--shadow-sm); }
+.lane.running {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px rgba(5,150,105,0.10), var(--shadow);
+}
+.lane.running::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, var(--success) 0%, #34d399 100%);
+}
+.lane-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.lane-name { font-weight: 700; color: var(--text); font-size: 17px; letter-spacing: -0.3px; }
+.lane-equip {
+  display: inline-block; background: var(--primary-soft); color: var(--primary);
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  margin-left: 8px; vertical-align: middle; letter-spacing: 0.2px;
+}
+.lane-menu {
+  color: var(--text-4); cursor: pointer; padding: 6px 8px; font-size: 18px;
+  border-radius: 6px; transition: background var(--t), color var(--t);
+}
+.lane-menu:hover { background: var(--surface-2); color: var(--text-3); }
+.lane-header-edit { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 12px; align-items: center; }
+.lane-name-input  { font-weight: 700; color: var(--text); font-size: 16px; padding: 8px 10px; letter-spacing: -0.2px; }
+.lane-equip-select{
+  width: auto; min-width: 120px; font-size: 12px; font-weight: 700;
+  color: var(--primary); background: var(--primary-soft);
+  border: 1px solid #bfdbfe; padding: 8px 10px;
+}
+.lane-idle {
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  flex: 1; color: var(--text-4); gap: 14px; padding: 16px;
+}
+.lane-idle .hint { font-size: 13px; }
+.lane-active { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.timer {
+  font-size: 52px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--success-2); text-align: center;
+  letter-spacing: -1px; margin: 8px 0 4px; line-height: 1;
+  font-feature-settings: "tnum" 1;
+}
+.timer-sub { text-align: center; font-size: 12px; color: var(--text-3); }
+.lane-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lane-form .full { grid-column: 1 / -1; }
+.lane-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 12px; flex-wrap: wrap; }
+.lane-actions .btn { flex: 1; min-width: max-content; }
+
+.add-lane {
+  background: rgba(255,255,255,0.4); border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg); padding: 18px;
+  min-height: 280px; display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  color: var(--text-4); cursor: pointer;
+  transition: border-color var(--t), color var(--t), background var(--t);
+}
+.add-lane:hover {
+  border-color: var(--primary); color: var(--primary);
+  background: var(--primary-soft);
+}
+.add-lane .plus { font-size: 40px; line-height: 1; margin-bottom: 8px; font-weight: 300; }
+
+/* QUEUE */
+.queue-form {
+  background: var(--surface); padding: 16px; border-radius: var(--radius);
+  margin-bottom: 16px; box-shadow: var(--shadow-xs);
+  display: grid; grid-template-columns: 2fr 1fr 2fr 2fr auto; gap: 10px; align-items: end;
+}
+@media (max-width: 700px) {
+  .queue-form { grid-template-columns: 1fr 1fr; }
+  .queue-form .add-btn { grid-column: 1 / -1; }
+}
+.time-edit { color: var(--primary); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+.time-edit:hover { color: var(--primary-2); }
+.time-input {
+  display: inline-block; width: auto; padding: 3px 8px;
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--primary); font: 600 12px inherit;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px; cursor: pointer; vertical-align: baseline;
+  transition: border-color var(--t), background var(--t), box-shadow var(--t);
+}
+.time-input:hover, .time-input:focus {
+  border-color: var(--primary); background: var(--primary-soft);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+.truck-card {
+  background: var(--surface); border-radius: var(--radius); padding: 14px 16px;
+  margin-bottom: 10px; display: flex; justify-content: space-between;
+  align-items: center; gap: 10px; flex-wrap: wrap;
+  border: 1px solid var(--border); box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--t), border-color var(--t);
+}
+.truck-card:hover { box-shadow: var(--shadow-sm); border-color: var(--border-strong); }
+.truck-card .info { flex: 1; min-width: 120px; }
+.truck-card .info .num { font-weight: 700; color: var(--text); font-size: 17px; letter-spacing: -0.2px; }
+.truck-card .info .meta { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+.truck-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* HISTORY / STATS */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+@media (max-width: 480px) { .stats { grid-template-columns: 1fr; } }
+.stat {
+  background: var(--surface); padding: 16px; border-radius: var(--radius);
+  text-align: center; border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.stat .num {
+  font-size: 28px; font-weight: 800; color: var(--text);
+  font-variant-numeric: tabular-nums; letter-spacing: -1px;
+}
+.stat .lbl {
+  font-size: 11px; color: var(--text-3); text-transform: uppercase;
+  letter-spacing: 0.6px; margin-top: 4px; font-weight: 600;
+}
+.equip-stat {
+  background: var(--surface); padding: 12px 16px; border-radius: var(--radius);
+  margin-bottom: 8px; display: flex; justify-content: space-between;
+  align-items: center; border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.equip-stat .name { font-weight: 700; color: var(--primary); letter-spacing: -0.2px; }
+.equip-stat .vals { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.history-row {
+  background: var(--surface); padding: 12px 14px;
+  border-radius: var(--radius-sm); margin-bottom: 8px;
+  display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 12px;
+  align-items: center; font-size: 14px;
+  border: 1px solid var(--border); box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--t);
+}
+.history-row:hover { box-shadow: var(--shadow-sm); }
+@media (max-width: 600px) {
+  .history-row { grid-template-columns: 1fr 1fr; row-gap: 4px; }
+  .history-row .meta { grid-column: 1 / -1; order: 99; font-size: 11px; }
+}
+.history-row .truck { font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+.history-row .meta { color: var(--text-3); font-size: 12px; }
+.history-row .duration { color: var(--success-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.history-row .cy { color: var(--warning); font-weight: 700; }
+.history-row .lane-tag {
+  font-size: 11px; color: var(--primary); background: var(--primary-soft);
+  padding: 3px 9px; border-radius: 999px; font-weight: 700;
+}
+
+/* MODAL */
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,23,42,0.55);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  z-index: 100; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-bg.show { display: flex; animation: fadeIn 200ms ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  background: var(--surface); border-radius: var(--radius-lg);
+  padding: 24px; max-width: 460px; width: 100%;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.modal h2 {
+  margin: 0 0 18px; color: var(--text); font-size: 22px;
+  font-weight: 800; letter-spacing: -0.5px;
+}
+.modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+.modal-actions .btn { flex: 1; }
+
+.empty-state { text-align: center; color: var(--text-4); padding: 48px 20px; font-size: 14px; }
+.section-title {
+  font-size: 11px; color: var(--text-3); text-transform: uppercase;
+  letter-spacing: 0.8px; font-weight: 700; margin: 22px 0 10px;
+}
+
+/* NOTES */
+.notes-section {
+  background: var(--surface); padding: 16px; border-radius: var(--radius);
+  margin-top: 18px; box-shadow: var(--shadow-xs);
+  border: 1px solid var(--border);
+}
+.note-card {
+  background: var(--warning-soft); padding: 11px 14px;
+  border-radius: var(--radius-sm); margin-bottom: 8px;
+  border-left: 3px solid var(--warning); font-size: 14px;
+  color: var(--text);
+}
+.note-card .ts { font-size: 11px; color: var(--text-3); margin-top: 4px; font-weight: 600; }
+
+/* MENU POP */
+.menu-pop {
+  position: absolute; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px;
+  min-width: 160px; box-shadow: var(--shadow-lg); z-index: 50;
+}
+.menu-pop button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; color: var(--text-2); border: none;
+  padding: 10px 12px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 500;
+  transition: background var(--t), color var(--t);
+}
+.menu-pop button:hover { background: var(--surface-2); color: var(--text); }
+
+.equipment-tag {
+  display: inline-block; background: var(--primary-soft); color: var(--primary);
+  padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+}
+.end-day-bar { padding: 18px; max-width: 1200px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<!-- ============ SIGN-ON ============ -->
+<div id="signon-screen" class="signon">
+  <img src="Tr-State.png" alt="Tri-State Construction" class="signon-logo" />
+  <h1>Pour Log</h1>
+  <p class="sub">Concrete Pour Productivity Tracker</p>
+
+  <div class="field">
+    <label>Operator name</label>
+    <input id="signon-name" type="text" placeholder="Your name" autocomplete="name" />
+  </div>
+
+  <div class="field">
+    <label>Job / site
+      <span id="job-status" style="text-transform:none; letter-spacing:0; color:#94a3b8; font-weight:400; margin-left:6px;"></span>
+    </label>
+    <select id="signon-job">
+      <option value="">— Select a job —</option>
+    </select>
+    <div style="margin-top:6px; text-align:center;">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="toggleManualJob()" style="padding:6px 10px; font-size:12px;">Type manually instead</button>
+    </div>
+    <input id="signon-job-manual" type="text" placeholder="Type job name" style="display:none; margin-top:8px;" />
+  </div>
+
+  <button class="btn btn-primary btn-block btn-lg" onclick="startDay()">Start Day</button>
+  <p class="footer-hint">You'll add equipment lanes (pump, telebelt, etc.) on the next screen — as many as you need running at once.</p>
+</div>
+
+<!-- Shared datalists for autocomplete (suppliers + mix designs) -->
+<datalist id="supplier-list">
+  <option value="Allan A. Myers"></option>
+  <option value="Empire Concrete"></option>
+  <option value="Eastern Concrete"></option>
+  <option value="Silvi Concrete"></option>
+  <option value="Conshohocken Concrete"></option>
+  <option value="US Concrete"></option>
+  <option value="Tilcon"></option>
+</datalist>
+<datalist id="mix-list">
+  <option value="3000 PSI"></option>
+  <option value="3500 PSI"></option>
+  <option value="4000 PSI"></option>
+  <option value="4500 PSI"></option>
+  <option value="5000 PSI"></option>
+  <option value="5000 PSI w/ fibers"></option>
+  <option value="6000 PSI"></option>
+  <option value="Lean Mix"></option>
+</datalist>
+
+<!-- ============ MAIN APP ============ -->
+<div id="app" style="display:none;">
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div id="bar-operator" class="bar-operator">—</div>
+      <div id="bar-job" class="bar-job"></div>
+    </div>
+    <img src="Tr-State.png" alt="Tri-State Construction" class="topbar-logo" />
+    <div class="topbar-right">
+      <button class="btn-logout" onclick="logout()">↩ Log Out</button>
+      <button class="icon-btn" onclick="endDay()" title="End day & export">⚙</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-page="lanes" onclick="showPage('lanes')">Lanes <span class="badge" id="badge-lanes">0</span></div>
+    <div class="tab" data-page="queue" onclick="showPage('queue')">Pending <span class="badge" id="badge-queue">0</span></div>
+    <div class="tab" data-page="history" onclick="showPage('history')">History <span class="badge" id="badge-history">0</span></div>
+  </div>
+
+  <!-- LANES PAGE -->
+  <div id="page-lanes" class="page active">
+    <div class="lanes" id="lanes-list"></div>
+
+    <div class="notes-section">
+      <label style="margin-bottom:8px;">Quick note / issue</label>
+      <div style="display:flex; gap:8px;">
+        <input id="quick-note" type="text" placeholder="Flag an issue, jot a reminder…"
+               onkeydown="if(event.key==='Enter') addNote();" />
+        <button class="btn btn-warn btn-sm" onclick="addNote()">Add</button>
+      </div>
+      <div id="notes-list" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <!-- QUEUE PAGE -->
+  <div id="page-queue" class="page">
+    <div class="queue-form">
+      <div><label>Truck #</label><input id="q-truck" type="text" placeholder="e.g. 1234" /></div>
+      <div><label>CY</label><input id="q-cy" type="number" step="0.5" placeholder="10" /></div>
+      <div><label>Supplier</label><input id="q-supplier" type="text" list="supplier-list" placeholder="e.g. Silvi" /></div>
+      <div><label>Mix Design</label><input id="q-mix" type="text" list="mix-list" placeholder="e.g. 4000 PSI" /></div>
+      <button class="btn btn-primary btn-sm add-btn" onclick="addToQueue()">+ Add</button>
+    </div>
+    <p style="color:#94a3b8; font-size:13px; margin: 8px 0 14px;">
+      Pre-enter trucks that are waiting. When one pulls up to a lane, tap "Assign" to drop it into a running pour.
+    </p>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- HISTORY PAGE -->
+  <div id="page-history" class="page">
+    <div class="stats">
+      <div class="stat"><div class="num" id="stat-trucks">0</div><div class="lbl">Trucks</div></div>
+      <div class="stat"><div class="num" id="stat-cy">0</div><div class="lbl">Total CY</div></div>
+      <div class="stat"><div class="num" id="stat-time">0:00</div><div class="lbl">Pour Time</div></div>
+    </div>
+
+    <div class="section-title">By Equipment</div>
+    <div id="equip-stats"></div>
+
+    <div class="section-title">All Pours</div>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<!-- MODAL: Add lane -->
+<div class="modal-bg" id="modal-add-lane">
+  <div class="modal">
+    <h2>Add equipment lane</h2>
+    <div class="field">
+      <label>Lane name</label>
+      <input id="ln-name" type="text" placeholder="e.g. Pump 1, Left Telebelt" />
+    </div>
+    <div class="field">
+      <label>Equipment type</label>
+      <select id="ln-equip">
+        <option value="Pump">Pump</option>
+        <option value="Boom Pump">Boom Pump</option>
+        <option value="Line Pump">Line Pump</option>
+        <option value="Telebelt">Telebelt</option>
+        <option value="Direct Discharge">Direct Discharge</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-lane')">Cancel</button>
+      <button class="btn btn-success" onclick="confirmAddLane()">Add Lane</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Assign queued truck to a lane -->
+<div class="modal-bg" id="modal-assign">
+  <div class="modal">
+    <h2 id="assign-title">Assign truck to lane</h2>
+    <div id="assign-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-assign')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============ STATE ============
+  const state = {
+    operator: '', job: '', dayStart: null,
+    lanes: [],     // {id, name, equipment, active: {pourId, truck, cy, notes, startAt} | null}
+    queue: [],     // {id, truck, cy, addedAt}
+    history: [],   // {id, truck, cy, startAt, endAt, laneName, equipment, notes}
+    notes: []      // {id, text, ts}
+  };
+  let timerInterval = null;
+  // localStorage + remote /api/sync (Vercel Postgres) for shared multi-device state.
+  // Each browser keeps its own copy locally so the app feels instant; the API call is
+  // debounced and runs in the background. Polling keeps multiple operators on the
+  // same job in near-real-time sync.
+  const LS_KEY = 'truckTrackerState_v2';
+  const SYNC_API = '/api/sync';
+  let _serverTs = 0;
+  let _saveTimer = null;
+  let _polling = false;
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){}
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(syncToServer, 700);
+  }
+
+  async function syncToServer() {
+    if (!state.job) return;
+    try {
+      const r = await fetch(SYNC_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job: state.job, state })
+      });
+      if (r.ok) { const j = await r.json(); if (j.ts) _serverTs = j.ts; }
+    } catch(e) { /* offline — localStorage still saved */ }
+  }
+
+  async function syncFromServer() {
+    if (!state.job) return false;
+    try {
+      const r = await fetch(SYNC_API + '?job=' + encodeURIComponent(state.job));
+      if (!r.ok) return false;
+      const j = await r.json();
+      if (!j.state) return false;
+      if (j.ts && j.ts > _serverTs) {
+        _serverTs = j.ts;
+        const myOperator = state.operator, myJob = state.job, myDayStart = state.dayStart;
+        Object.assign(state, j.state, { operator: myOperator, job: myJob, dayStart: myDayStart || j.state.dayStart });
+        try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){}
+        renderAll();
+        return true;
+      }
+    } catch(e) { /* offline */ }
+    return false;
+  }
+
+  function startPolling() {
+    if (_polling) return;
+    _polling = true;
+    setInterval(() => { if (state.job) syncFromServer(); }, 10000);
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return false;
+      Object.assign(state, JSON.parse(raw));
+      if (state.job) syncFromServer();
+      startPolling();
+      return !!state.operator;
+    } catch(e) { return false; }
+  }
+  function id() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function fmtDuration(ms) {
+    const s = Math.max(0, Math.floor(ms/1000));
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    return `${m}:${String(sec).padStart(2,'0')}`;
+  }
+  function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  // ============ SHAREPOINT JOB LIST ============
+  // Configure these once during deployment to enable live SharePoint fetch.
+  // Until CLIENT_ID is filled in, the app uses the embedded fallback list below.
+  const SP_CONFIG = {
+    clientId: '',                                              // Entra app registration client ID
+    tenantId: 'common',                                        // or your tenant GUID
+    redirectUri: window.location.origin + window.location.pathname,
+    scopes: ['Files.Read.All'],
+    driveId: 'b!u95DBuhWj0-7w_5uas2_STLReUzfbAxDtFIR1Xq3KMUOoZae6sM8S690OUcoBih8',
+    filePath: '/All Data/Timekeeping and Manpower App/JOB LIST.csv'
+  };
+  // Snapshot from SharePoint on 4/28/2026 — used as fallback if Graph fetch fails or is not configured.
+  const FALLBACK_JOBS = [
+    { num: '942', name: 'Holtec Repairs',                       address: '' },
+    { num: '941', name: 'DPMC Generator',                       address: '145 West State Street Trenton, NJ 08625' },
+    { num: '940', name: 'Target Parkesburg',                    address: '800 Nova Way Parkesburg, PA 19365' },
+    { num: '938', name: '3600 CCB Auditorium',                  address: '3600 Civic Center Blvd. Philadelphia, PA 19104' },
+    { num: '937', name: 'PRPA Cruise Line',                     address: 'PRPA Cruise Terminal 04 Atlantic Ave, Philadelphia, PA 19153' },
+    { num: '936', name: 'Cooper CUP',                           address: '101 Haddon Ave Camden, NJ 08103' },
+    { num: '935', name: 'Three Mile Island SOG',                address: '' },
+    { num: '934', name: 'CCCC Church',                          address: '1800 E Broad St, Millville, NJ 08332' },
+    { num: '932', name: 'NEP Toppings',                         address: '4081 S. Lincoln Ave. Vineland, NJ 08361' },
+    { num: '929', name: 'Cape May Police Station',              address: "Lafayette & St John's St Cape May, NJ 08204" },
+    { num: '928', name: 'DSG Cherry Hill',                      address: '1625 Cherry Hill, NJ 08002' },
+    { num: '919', name: 'Cooper Tower A',                       address: '101 Haddon Ave Camden, NJ 08103' },
+    { num: '918', name: 'Inspira Overbuild',                    address: '700 Mullica Hill Rd Mullica Hill, NJ 08062' },
+    { num: '916', name: 'WWTP Fortescue',                       address: '215 Pennsylvania Ave Fortescue, NJ 08321' },
+    { num: '915', name: 'Inspira Mullica Hill Expansion',       address: '700 Mullica Hill Rd Mullica Hill, NJ 08062' },
+    { num: '914', name: 'Philaport Dry Warehouse Phase II',     address: '3350 S. 3rd St Philadelphia, PA 19148' },
+    { num: '913', name: 'CHOP NPT BP 7a',                       address: '3501 Civic Center Blvd. Philadelphia, PA 19104' },
+    { num: '909', name: 'Virtua Elevator Machine Room',         address: '1600 Haddon Ave Camden, NJ 08103' },
+    { num: '905', name: 'Byberry Warehouse',                    address: '15000 Roosevelt Blvd Philadelphia, Pennsylvania 19116' },
+    { num: '904', name: 'Rowan SVM',                            address: '99 Zee Road, Glassboro NJ' },
+    { num: '901', name: 'Chapel Block North',                   address: '1225 Constitution Ave Philadelphia, PA 19112' },
+    { num: '901', name: 'Chapel Block South',                   address: '1225 Constitution Ave Philadelphia, PA 19112' }
+  ];
+  const JOBS_CACHE_KEY = 'truckTracker_jobsCache_v1';
+  let JOBS = [];
+  let msalInstance = null;
+
+  function setJobStatus(msg, kind) {
+    const el = document.getElementById('job-status');
+    if (!el) return;
+    const colors = { ok: '#047857', warn: '#b45309', err: '#dc2626', info: '#64748b' };
+    el.style.color = colors[kind] || colors.info;
+    el.textContent = msg;
+  }
+
+  function renderJobOptions() {
+    const sel = document.getElementById('signon-job');
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Select a job —</option>' +
+      JOBS.map(j => {
+        const label = j.num ? `${j.num} — ${j.name}` : j.name;
+        const val = j.num ? `${j.num} — ${j.name}` : j.name;
+        const title = j.address ? ` title="${j.address.replace(/"/g,'&quot;')}"` : '';
+        return `<option value="${val.replace(/"/g,'&quot;')}"${title}>${label}</option>`;
+      }).join('');
+    if (prev) sel.value = prev;
+  }
+
+  function parseJobsCsv(text) {
+    // The file uses tabs as delimiters and may be UTF-16 LE with BOM.
+    // Strip BOM, normalize line endings, drop the header row.
+    const cleaned = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      // Split on tab OR comma (handles either format)
+      const parts = line.split('\t').length > 1 ? line.split('\t') : splitCsvLine(line);
+      if (!parts.length) continue;
+      const num = (parts[0] || '').trim();
+      const name = (parts[1] || '').trim().replace(/^"|"$/g, '');
+      // Skip header and any row without a numeric job number
+      if (!/^\d+$/.test(num)) continue;
+      if (!name) continue;
+      const address = (parts.slice(2).join(', ') || '').trim().replace(/^"|"$/g, '');
+      out.push({ num, name, address });
+    }
+    return out;
+  }
+  function splitCsvLine(line) {
+    const out = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+      cur += c;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  async function getGraphToken(forceInteractive) {
+    if (!SP_CONFIG.clientId) throw new Error('SharePoint not configured');
+    if (!msalInstance) {
+      msalInstance = new msal.PublicClientApplication({
+        auth: {
+          clientId: SP_CONFIG.clientId,
+          authority: `https://login.microsoftonline.com/${SP_CONFIG.tenantId}`,
+          redirectUri: SP_CONFIG.redirectUri
+        },
+        cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+      });
+      await msalInstance.initialize();
+    }
+    const accounts = msalInstance.getAllAccounts();
+    const req = { scopes: SP_CONFIG.scopes, account: accounts[0] };
+    if (!forceInteractive && accounts.length) {
+      try { return (await msalInstance.acquireTokenSilent(req)).accessToken; }
+      catch (e) { /* fall through to interactive */ }
+    }
+    const result = await msalInstance.acquireTokenPopup({ scopes: SP_CONFIG.scopes });
+    return result.accessToken;
+  }
+
+  async function fetchJobsFromSharePoint() {
+    const token = await getGraphToken(false);
+    const url = `https://graph.microsoft.com/v1.0/drives/${SP_CONFIG.driveId}/root:${SP_CONFIG.filePath}:/content`;
+    const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (!resp.ok) throw new Error(`Graph ${resp.status}`);
+    // Try UTF-8 first; if it looks like UTF-16, re-decode
+    const buf = await resp.arrayBuffer();
+    let text = new TextDecoder('utf-8').decode(buf);
+    if (text.charCodeAt(0) === 0xFEFF || /\x00/.test(text.slice(0, 200))) {
+      text = new TextDecoder('utf-16le').decode(buf);
+    }
+    return parseJobsCsv(text);
+  }
+
+  async function loadJobs(force) {
+    // 1. Try cache first (fast paint)
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(JOBS_CACHE_KEY) || 'null');
+        if (cached && cached.jobs && cached.jobs.length) {
+          JOBS = cached.jobs;
+          renderJobOptions();
+          const ageHrs = ((Date.now() - cached.ts) / 3600000).toFixed(1);
+          setJobStatus(`cached · ${ageHrs}h ago`, 'info');
+        }
+      } catch(e){}
+    }
+    // 2. Try live fetch
+    if (SP_CONFIG.clientId) {
+      try {
+        setJobStatus('loading…', 'info');
+        const fresh = await fetchJobsFromSharePoint();
+        JOBS = fresh;
+        renderJobOptions();
+        localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify({ ts: Date.now(), jobs: fresh }));
+        setJobStatus(`live · ${fresh.length} jobs`, 'ok');
+        return;
+      } catch (err) {
+        console.warn('SharePoint fetch failed:', err);
+        setJobStatus('SharePoint unavailable — using built-in list', 'warn');
+      }
+    } else {
+      setJobStatus('using built-in list (configure Entra app for live fetch)', 'info');
+    }
+    // 3. Fallback to embedded snapshot
+    if (!JOBS.length) {
+      JOBS = FALLBACK_JOBS.slice();
+      renderJobOptions();
+    }
+  }
+
+  function toggleManualJob() {
+    const sel = document.getElementById('signon-job');
+    const inp = document.getElementById('signon-job-manual');
+    const showing = inp.style.display !== 'none';
+    inp.style.display = showing ? 'none' : 'block';
+    sel.style.display = showing ? 'block' : 'none';
+    if (!showing) inp.focus();
+  }
+
+  // ============ SIGN-ON ============
+  function startDay() {
+    const name = document.getElementById('signon-name').value.trim();
+    const sel  = document.getElementById('signon-job');
+    const inp  = document.getElementById('signon-job-manual');
+    const job  = (inp.style.display !== 'none' ? inp.value : sel.value).trim();
+    if (!name) { alert('Please enter your name'); return; }
+    state.operator = name; state.job = job;
+    // Only set dayStart if it isn't already (so logout → login preserves the original start time)
+    state.dayStart = state.dayStart || Date.now();
+    // seed with one lane so they're not staring at nothing
+    if (state.lanes.length === 0) {
+      state.lanes.push({ id: id(), name: 'Pump 1', equipment: 'Pump', active: null });
+    }
+    save(); showApp();
+      syncFromServer();
+    startPolling();
+  }
+
+  function showApp() {
+    document.getElementById('signon-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('bar-operator').textContent = state.operator;
+    document.getElementById('bar-job').textContent = state.job ? `📍 ${state.job}` : '';
+    renderAll();
+    if (!timerInterval) timerInterval = setInterval(tick, 1000);
+  }
+
+  async function logout() {
+    const lineCount = (state.history || []).length;
+    const noteCount = (state.notes || []).length;
+    const summary = lineCount === 0 && noteCount === 0
+      ? 'End the day and sign out?\n\nNo completed pours yet.'
+      : `End the day and sign out?\n\n${lineCount} pour${lineCount === 1 ? '' : 's'} and ${noteCount} note${noteCount === 1 ? '' : 's'} will be saved permanently to the database.`;
+    if (!confirm(summary)) return;
+
+    // Archive day's history + notes into the database.
+    if (state.job) {
+      try {
+        const r = await fetch('/api/end-day', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job: state.job,
+            operator: state.operator,
+            history: state.history || [],
+            notes: state.notes || [],
+            dayStart: state.dayStart
+          })
+        });
+        if (!r.ok) {
+          const txt = await r.text().catch(() => '');
+          if (!confirm(`Archive failed (HTTP ${r.status}). Sign out anyway? Local data may be lost.\n\n${txt.slice(0, 200)}`)) return;
+        }
+      } catch (err) {
+        if (!confirm('Couldn\'t reach the server to archive the day (offline?). Sign out anyway?')) return;
+      }
+    }
+
+    // Pre-fill sign-on form for the next operator
+    document.getElementById('signon-name').value = state.operator || '';
+    const sel = document.getElementById('signon-job');
+    const inp = document.getElementById('signon-job-manual');
+    if (state.job && sel && [...sel.options].some(o => o.value === state.job)) {
+      sel.value = state.job;
+      sel.style.display = 'block';
+      if (inp) inp.style.display = 'none';
+    } else if (state.job && inp) {
+      inp.value = state.job;
+      inp.style.display = 'block';
+      sel.style.display = 'none';
+    }
+    // Clear local state — day is now archived in DB
+    state.operator = '';
+    state.lanes = [];
+    state.queue = [];
+    state.history = [];
+    state.notes = [];
+    state.dayStart = null;
+    save();
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('signon-screen').style.display = 'block';
+    window.scrollTo(0, 0);
+  }
+
+  function endDay() {
+    if (!confirm('End the day? This exports a log file and clears all state.')) return;
+    const lines = [];
+    lines.push(`POUR LOG — DAY LOG`);
+    lines.push(`Operator: ${state.operator}`);
+    if (state.job) lines.push(`Job: ${state.job}`);
+    lines.push(`Day started: ${new Date(state.dayStart).toLocaleString()}`);
+    lines.push(`Day ended:   ${new Date().toLocaleString()}`);
+    lines.push('');
+    const t = computeTotals();
+    lines.push(`SUMMARY`);
+    lines.push(`  Trucks completed: ${t.trucks}`);
+    lines.push(`  Total CY:         ${t.cy}`);
+    lines.push(`  Total pour time:  ${fmtDuration(t.ms)}`);
+    lines.push('');
+    const byEq = computeByEquipment();
+    if (byEq.length) {
+      lines.push(`BY EQUIPMENT`);
+      byEq.forEach(e => lines.push(`  ${e.equipment}: ${e.trucks} trucks · ${e.cy.toFixed(1)} CY · ${fmtDuration(e.ms)}`));
+      lines.push('');
+    }
+    lines.push(`TRUCKS`);
+    [...state.history].reverse().forEach(h => {
+      const supplier = h.supplier ? `  ${h.supplier}` : '';
+      const mix = h.mix ? `  ${h.mix}` : '';
+      const arrived = h.arrivedAt ? `  arr ${fmtTime(h.arrivedAt)}` : '';
+      lines.push(`  #${h.truck}  ${h.cy} CY  ${fmtTime(h.startAt)}–${fmtTime(h.endAt)}  (${fmtDuration(h.endAt-h.startAt)})${arrived}  [${h.laneName} / ${h.equipment}]${supplier}${mix}${h.notes ? '  — ' + h.notes : ''}`);
+    });
+    if (state.notes.length) {
+      lines.push('');
+      lines.push(`NOTES / ISSUES`);
+      [...state.notes].reverse().forEach(n => lines.push(`  [${fmtTime(n.ts)}] ${n.text}`));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `pour-log-${new Date().toISOString().slice(0,10)}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    localStorage.removeItem(LS_KEY);
+    location.reload();
+  }
+
+  // ============ TABS ============
+  function showPage(p) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === p));
+    document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + p));
+  }
+
+  // ============ LANES ============
+  function openAddLane() {
+    document.getElementById('ln-name').value = '';
+    document.getElementById('ln-equip').value = 'Pump';
+    document.getElementById('modal-add-lane').classList.add('show');
+    setTimeout(() => document.getElementById('ln-name').focus(), 50);
+  }
+
+  function confirmAddLane() {
+    const name = document.getElementById('ln-name').value.trim();
+    const equip = document.getElementById('ln-equip').value;
+    if (!name) { alert('Lane name required'); return; }
+    state.lanes.push({ id: id(), name, equipment: equip, active: null });
+    closeModal('modal-add-lane');
+    save(); renderLanes(); renderBadges();
+  }
+
+  function removeLane(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l) return;
+    if (l.active) { alert('Stop the active pour before removing this lane.'); return; }
+    if (!confirm(`Remove lane "${l.name}"?`)) return;
+    state.lanes = state.lanes.filter(x => x.id !== lid);
+    save(); renderLanes(); renderBadges();
+  }
+
+  function renameLane(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l) return;
+    const v = prompt('Rename lane', l.name);
+    if (v === null) return;
+    const t = v.trim(); if (!t) return;
+    l.name = t; save(); renderLanes();
+  }
+
+  // The KEY interaction: starting a pour begins the timer immediately.
+  // Truck info gets typed in WHILE the clock runs.
+  function startPour(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l) return;
+    if (l.active) return;
+    const now = Date.now();
+    l.active = { pourId: id(), truck: '', cy: '', notes: '', supplier: '', mix: '', arrivedAt: now, startAt: now };
+    save(); renderLanes(); renderStats();
+    // focus the truck input so they can start typing
+    setTimeout(() => {
+      const inp = document.querySelector(`[data-lane-id="${lid}"] .truck-input`);
+      if (inp) inp.focus();
+    }, 50);
+  }
+
+  function updateActiveField(lid, field, val) {
+    const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
+    l.active[field] = val;
+    save();
+    // no full re-render — that would lose focus while typing
+    renderStats();
+  }
+
+  // Edit the lane itself (name / equipment) without re-rendering — preserves focus on the input.
+  function updateLaneField(lid, field, val) {
+    const l = state.lanes.find(x => x.id === lid); if (!l) return;
+    if (field !== 'name' && field !== 'equipment') return;
+    l[field] = val;
+    save();
+  }
+
+  // Format a timestamp as HH:MM (24-hour) for use as the value of an <input type="time">.
+  function fmtTimeForInput(ts) {
+    const d = new Date(ts);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  // Update arrival time directly from an inline <input type="time">. No re-render — input keeps its own value.
+  function setArrivalTime(lid, hhmm) {
+    const l = state.lanes.find(x => x.id === lid);
+    if (!l || !l.active) return;
+    const m = String(hhmm).match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return;
+    const newDate = new Date();
+    newDate.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+    let ts = newDate.getTime();
+    // If user picks a time in the future (e.g. they typed it before midnight rolled), back-date one day.
+    if (ts > Date.now() + 60_000) ts -= 24 * 60 * 60 * 1000;
+    l.active.arrivedAt = ts;
+    save();
+  }
+
+  // Two-step Reset Clock: first tap "arms" the button (shows confirm style); second tap within 4s actually resets.
+  // Disarms automatically after 4s if no second tap.
+  const _pendingReset = new Map();
+  function resetPourClock(lid) {
+    const l = state.lanes.find(x => x.id === lid);
+    if (!l || !l.active) return;
+    const armedAt = _pendingReset.get(lid);
+    if (armedAt && Date.now() - armedAt < 4000) {
+      // Confirmed
+      _pendingReset.delete(lid);
+      l.active.startAt = Date.now();
+      save();
+      renderLanes();
+    } else {
+      // Arm the reset
+      _pendingReset.set(lid, Date.now());
+      renderLanes();
+      setTimeout(() => {
+        const t = _pendingReset.get(lid);
+        if (t && Date.now() - t >= 4000) {
+          _pendingReset.delete(lid);
+          renderLanes();
+        }
+      }, 4100);
+    }
+  }
+
+  // Equipment options for inline editor — always include the lane's current value, even if non-standard.
+  const EQUIPMENT_OPTIONS = ['Pump', 'Boom Pump', 'Line Pump', 'Telebelt', 'Direct Discharge', 'Other'];
+  function equipmentOptions(current) {
+    const opts = EQUIPMENT_OPTIONS.includes(current) ? EQUIPMENT_OPTIONS : [current, ...EQUIPMENT_OPTIONS];
+    return opts.map(o => `<option value="${escapeAttr(o)}"${o === current ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
+  }
+
+  function completePour(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
+    const a = l.active;
+    if (!a.truck) {
+      if (!confirm('No truck # entered. Complete anyway?')) return;
+    }
+    state.history.unshift({
+      id: a.pourId, truck: a.truck || '(no #)', cy: parseFloat(a.cy) || 0,
+      arrivedAt: a.arrivedAt || a.startAt, startAt: a.startAt, endAt: Date.now(),
+      laneName: l.name, equipment: l.equipment,
+      supplier: a.supplier || '', mix: a.mix || '', notes: a.notes || ''
+    });
+    l.active = null;
+    save(); renderAll();
+  }
+
+  function cancelPour(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
+    if (!confirm('Cancel this pour? It will NOT be saved to history.')) return;
+    l.active = null;
+    save(); renderLanes(); renderStats();
+  }
+
+  function assignFromQueueOpen(lid) {
+    const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
+    if (state.queue.length === 0) { alert('No trucks in pending queue.'); return; }
+    document.getElementById('assign-title').textContent = `Pick truck → ${l.name}`;
+    const html = state.queue.map(q => `
+      <div class="truck-card" style="cursor:pointer;" onclick="assignFromQueue('${q.id}','${lid}')">
+        <div class="info">
+          <div class="num">#${escapeHtml(q.truck)}</div>
+          <div class="meta">${[q.cy ? q.cy+' CY' : '', q.supplier, q.mix].filter(Boolean).map(escapeHtml).join(' · ')}${(q.cy||q.supplier||q.mix) ? ' · ' : ''}waiting since ${fmtTime(q.addedAt)}</div>
+        </div>
+        <div style="color:#2563eb; font-weight:600;">→</div>
+      </div>`).join('');
+    document.getElementById('assign-list').innerHTML = html;
+    document.getElementById('modal-assign').classList.add('show');
+  }
+
+  function assignFromQueue(qid, lid) {
+    const q = state.queue.find(x => x.id === qid);
+    const l = state.lanes.find(x => x.id === lid);
+    if (!q || !l || !l.active) return;
+    l.active.truck = q.truck;
+    l.active.cy = q.cy || '';
+    if (q.supplier) l.active.supplier = q.supplier;
+    if (q.mix) l.active.mix = q.mix;
+    // Carry the queue addedAt over as arrival time — that's when the truck pulled up.
+    if (q.addedAt) l.active.arrivedAt = q.addedAt;
+    state.queue = state.queue.filter(x => x.id !== qid);
+    closeModal('modal-assign');
+    save(); renderAll();
+  }
+
+  function renderLanes() {
+    const el = document.getElementById('lanes-list');
+    let html = state.lanes.map(l => {
+      if (l.active) {
+        const a = l.active;
+        const elapsed = Date.now() - a.startAt;
+        return `
+          <div class="lane running" data-lane-id="${l.id}">
+            <div class="lane-header-edit">
+              <input class="lane-name-input" type="text" value="${escapeAttr(l.name)}"
+                placeholder="Lane name"
+                oninput="updateLaneField('${l.id}','name',this.value)" />
+              <select class="lane-equip-select" onchange="updateLaneField('${l.id}','equipment',this.value)">
+                ${equipmentOptions(l.equipment)}
+              </select>
+            </div>
+            <div class="lane-active">
+              <div class="timer" data-timer="${a.startAt}">${fmtDuration(elapsed)}</div>
+              <div class="timer-sub">
+                arrived <input type="time" class="time-input"
+                  value="${fmtTimeForInput(a.arrivedAt || a.startAt)}"
+                  onchange="setArrivalTime('${l.id}', this.value)" />
+                · started ${fmtTime(a.startAt)}
+              </div>
+              <div class="lane-form">
+                <div>
+                  <label>Truck #</label>
+                  <input class="truck-input" type="text" value="${escapeAttr(a.truck)}"
+                    placeholder="e.g. 1234"
+                    oninput="updateActiveField('${l.id}','truck',this.value)" />
+                </div>
+                <div>
+                  <label>CY</label>
+                  <input type="number" step="0.5" value="${escapeAttr(a.cy)}"
+                    placeholder="10"
+                    oninput="updateActiveField('${l.id}','cy',this.value)" />
+                </div>
+                <div>
+                  <label>Supplier</label>
+                  <input type="text" value="${escapeAttr(a.supplier || '')}" list="supplier-list"
+                    placeholder="e.g. Silvi"
+                    oninput="updateActiveField('${l.id}','supplier',this.value)" />
+                </div>
+                <div>
+                  <label>Mix Design</label>
+                  <input type="text" value="${escapeAttr(a.mix || '')}" list="mix-list"
+                    placeholder="e.g. 4000 PSI"
+                    oninput="updateActiveField('${l.id}','mix',this.value)" />
+                </div>
+                <div class="full">
+                  <label>Notes</label>
+                  <input type="text" value="${escapeAttr(a.notes)}"
+                    placeholder="Slump, air, issues…"
+                    oninput="updateActiveField('${l.id}','notes',this.value)" />
+                </div>
+              </div>
+              <div class="lane-actions">
+                <button class="btn btn-success" onclick="completePour('${l.id}')">✓ Stop & Save</button>
+                ${(_pendingReset.has(l.id) && Date.now() - _pendingReset.get(l.id) < 4000)
+                  ? `<button class="btn btn-danger btn-sm" onclick="resetPourClock('${l.id}')">↻ Tap Again to Reset</button>`
+                  : `<button class="btn btn-ghost btn-sm" onclick="resetPourClock('${l.id}')" title="Reset elapsed time to 00:00">↻ Reset Clock</button>`}
+                ${state.queue.length ? `<button class="btn btn-ghost btn-sm" onclick="assignFromQueueOpen('${l.id}')" title="Pick from queue">📋</button>` : ''}
+                <button class="btn btn-ghost btn-sm" onclick="cancelPour('${l.id}')" title="Cancel without saving">✕</button>
+              </div>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="lane" data-lane-id="${l.id}">
+            <div class="lane-header">
+              <div class="lane-name">${escapeHtml(l.name)}<span class="lane-equip">${escapeHtml(l.equipment)}</span></div>
+              <span class="lane-menu" onclick="laneMenu(event,'${l.id}')">⋯</span>
+            </div>
+            <div class="lane-idle">
+              <div class="hint">Idle — tap below when a truck pulls up</div>
+              <button class="btn btn-success btn-lg btn-block" onclick="startPour('${l.id}')">▶ Start Pour</button>
+            </div>
+          </div>`;
+      }
+    }).join('');
+    html += `
+      <div class="add-lane" onclick="openAddLane()">
+        <div class="plus">+</div>
+        <div>Add equipment lane</div>
+      </div>`;
+    el.innerHTML = html;
+  }
+
+  function laneMenu(ev, lid) {
+    ev.stopPropagation();
+    closeAllMenus();
+    const m = document.createElement('div');
+    m.className = 'menu-pop';
+    m.innerHTML = `
+      <button onclick="renameLane('${lid}'); closeAllMenus();">Rename</button>
+      <button onclick="removeLane('${lid}'); closeAllMenus();">Remove lane</button>
+    `;
+    document.body.appendChild(m);
+    const r = ev.target.getBoundingClientRect();
+    m.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    m.style.left = Math.min(window.innerWidth - 160, r.left) + 'px';
+    setTimeout(() => document.addEventListener('click', closeAllMenus, { once: true }), 0);
+  }
+  function closeAllMenus() { document.querySelectorAll('.menu-pop').forEach(e => e.remove()); }
+
+  // ============ QUEUE ============
+  function addToQueue() {
+    const t = document.getElementById('q-truck').value.trim();
+    const cy = parseFloat(document.getElementById('q-cy').value) || 0;
+    if (!t) { alert('Truck # required'); return; }
+    const supplier = (document.getElementById('q-supplier').value || '').trim();
+    const mix      = (document.getElementById('q-mix').value || '').trim();
+    state.queue.push({ id: id(), truck: t, cy, supplier, mix, addedAt: Date.now() });
+    document.getElementById('q-truck').value = '';
+    document.getElementById('q-cy').value = '';
+    document.getElementById('q-supplier').value = '';
+    document.getElementById('q-mix').value = '';
+    save(); renderQueue(); renderBadges();
+  }
+  function removeFromQueue(qid) {
+    state.queue = state.queue.filter(q => q.id !== qid);
+    save(); renderQueue(); renderBadges();
+  }
+  function renderQueue() {
+    const el = document.getElementById('queue-list');
+    if (!state.queue.length) {
+      el.innerHTML = '<div class="empty-state">No trucks waiting.</div>';
+      return;
+    }
+    const laneOpts = state.lanes.filter(l => l.active).map(l => `<button class="btn btn-success btn-sm" onclick="quickAssign('{{QID}}','${l.id}')">→ ${escapeHtml(l.name)}</button>`).join('');
+    el.innerHTML = state.queue.map(q => {
+      const meta = [
+        q.cy ? q.cy + ' CY' : '',
+        q.supplier ? escapeHtml(q.supplier) : '',
+        q.mix ? escapeHtml(q.mix) : '',
+        'arrived ' + fmtTime(q.addedAt)
+      ].filter(Boolean).join(' · ');
+      return `
+      <div class="truck-card">
+        <div class="info">
+          <div class="num">#${escapeHtml(q.truck)}</div>
+          <div class="meta">${meta}</div>
+        </div>
+        <div class="actions">
+          ${laneOpts.replace(/{{QID}}/g, q.id)}
+          <button class="btn btn-ghost btn-sm" onclick="removeFromQueue('${q.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  function quickAssign(qid, lid) { assignFromQueue(qid, lid); }
+
+  // ============ HISTORY / STATS ============
+  function computeTotals() {
+    const trucks = state.history.length;
+    const cy = state.history.reduce((s,h) => s + (parseFloat(h.cy)||0), 0);
+    const ms = state.history.reduce((s,h) => s + (h.endAt - h.startAt), 0);
+    const rate = ms > 0 ? (cy / (ms / 3600000)) : 0;
+    return { trucks, cy: cy.toFixed(1), ms, rate: rate.toFixed(1) };
+  }
+  function computeByEquipment() {
+    const m = {};
+    state.history.forEach(h => {
+      const k = h.equipment;
+      m[k] = m[k] || { equipment: k, trucks: 0, cy: 0, ms: 0 };
+      m[k].trucks++; m[k].cy += parseFloat(h.cy)||0; m[k].ms += (h.endAt - h.startAt);
+    });
+    return Object.values(m).map(e => ({ ...e, rate: e.ms > 0 ? e.cy / (e.ms / 3600000) : 0 }));
+  }
+  function computeLiveRate() {
+    const t = computeTotals();
+    let cy = parseFloat(t.cy), ms = t.ms;
+    state.lanes.forEach(l => {
+      if (l.active) {
+        cy += parseFloat(l.active.cy) || 0;
+        ms += (Date.now() - l.active.startAt);
+      }
+    });
+    if (ms <= 0) return null;
+    return cy / (ms / 3600000);
+  }
+
+  function renderStats() {
+    const t = computeTotals();
+    document.getElementById('stat-trucks').textContent = t.trucks;
+    document.getElementById('stat-cy').textContent = t.cy;
+    document.getElementById('stat-time').textContent = fmtDuration(t.ms);
+  }
+  function renderEquipStats() {
+    const el = document.getElementById('equip-stats');
+    const eq = computeByEquipment();
+    if (!eq.length) { el.innerHTML = '<div class="empty-state" style="padding:14px;">No data yet.</div>'; return; }
+    el.innerHTML = eq.map(e => `
+      <div class="equip-stat">
+        <div class="name">${escapeHtml(e.equipment)}</div>
+        <div class="vals">${e.trucks} trucks · <strong style="color:#0f172a;">${e.cy.toFixed(1)} CY</strong> · ${fmtDuration(e.ms)}</div>
+      </div>`).join('');
+  }
+  function deleteHistory(hid) {
+    if (!confirm('Delete this history entry?')) return;
+    state.history = state.history.filter(h => h.id !== hid);
+    save(); renderAll();
+  }
+  function renderHistory() {
+    const el = document.getElementById('history-list');
+    if (!state.history.length) {
+      el.innerHTML = '<div class="empty-state">No completed pours yet.</div>';
+      return;
+    }
+    el.innerHTML = state.history.map(h => {
+      const arrived = h.arrivedAt && h.arrivedAt < h.startAt ? ` (waited ${fmtDuration(h.startAt - h.arrivedAt)})` : '';
+      const detail = [
+        h.supplier ? escapeHtml(h.supplier) : '',
+        h.mix ? escapeHtml(h.mix) : '',
+        h.notes ? escapeHtml(h.notes) : ''
+      ].filter(Boolean).join(' · ');
+      return `
+      <div class="history-row">
+        <span class="truck">#${escapeHtml(h.truck)}</span>
+        <span class="meta">${fmtTime(h.startAt)} → ${fmtTime(h.endAt)}${arrived}${detail ? ' · ' + detail : ''}</span>
+        <span class="cy">${h.cy} CY</span>
+        <span class="duration">${fmtDuration(h.endAt - h.startAt)}</span>
+        <span class="lane-tag">${escapeHtml(h.laneName)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ============ NOTES ============
+  function addNote() {
+    const inp = document.getElementById('quick-note');
+    const t = inp.value.trim(); if (!t) return;
+    state.notes.unshift({ id: id(), text: t, ts: Date.now() });
+    inp.value = ''; save(); renderNotes();
+  }
+  function renderNotes() {
+    const el = document.getElementById('notes-list');
+    el.innerHTML = state.notes.slice(0, 5).map(n => `
+      <div class="note-card">${escapeHtml(n.text)}<div class="ts">${fmtTime(n.ts)}</div></div>
+    `).join('');
+  }
+
+  // ============ TICK ============
+  function tick() {
+    document.querySelectorAll('[data-timer]').forEach(el => {
+      const start = parseInt(el.getAttribute('data-timer'), 10);
+      el.textContent = fmtDuration(Date.now() - start);
+    });
+    renderStats();
+  }
+
+  function renderBadges() {
+    document.getElementById('badge-lanes').textContent = state.lanes.length;
+    document.getElementById('badge-queue').textContent = state.queue.length;
+    document.getElementById('badge-history').textContent = state.history.length;
+  }
+  function renderAll() {
+    renderLanes(); renderQueue(); renderHistory(); renderEquipStats(); renderNotes(); renderStats(); renderBadges();
+  }
+
+  function closeModal(mid) { document.getElementById(mid).classList.remove('show'); }
+  document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
+
+  // ============ BOOT ============
+  loadJobs(false);
+  if (load()) showApp();
+</script>
+</body>
+</html>
