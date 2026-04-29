@@ -1,0 +1,100 @@
+# Pour Log — Vercel Deployment
+
+Step-by-step for getting `truck.tscnj.com` live on Vercel. Should take Greg about **15 minutes** end-to-end. Everything is in this `outputs` folder.
+
+## What's in this folder
+
+```
+package.json           ← Node deps (just @vercel/postgres)
+vercel.json            ← Vercel config; serves pour-log.html at /
+pour-log.html          ← The app
+Tr-State.png           ← Logo
+api/
+  ├── _db.js           ← Shared DB helpers
+  ├── _init.js         ← One-time schema setup
+  ├── sync.js          ← v1 state sync (frontend uses this)
+  ├── lanes.js         ← v2 relational endpoints (not used yet)
+  ├── pours.js
+  ├── queue.js
+  ├── notes.js
+  └── state.js
+PROJECT.md             ← Overall project context
+```
+
+## Deployment steps
+
+### 1. Get the files into a Git repo
+
+The Vercel CLI also works without Git, but a repo makes future updates trivial.
+
+```bash
+cd /path/where/you/want/the/repo
+mkdir pour-log && cd pour-log
+# copy everything from this outputs folder into here
+git init && git add . && git commit -m "Initial pour log"
+```
+
+Optional: push to GitHub for CI auto-deploys later.
+
+### 2. Create the Vercel project
+
+- Log in to Vercel, click **New Project**
+- Either import the GitHub repo, or run `vercel` from inside the folder and follow the prompts
+- Framework preset: **Other** (Vercel will auto-detect static + Node API routes)
+- Build command: leave blank
+- Output directory: leave blank
+
+### 3. Add Vercel Postgres
+
+In the Vercel dashboard for the new project:
+
+- **Storage** tab → **Create Database** → **Postgres** → choose a region (us-east-1 if customers are East Coast)
+- After creation, click **Connect Project** and pick `pour-log`
+- This auto-injects `POSTGRES_URL` and friends as environment variables
+
+### 4. Add the INIT_SECRET environment variable
+
+In the project's **Settings → Environment Variables** add:
+
+```
+INIT_SECRET = <any random string, e.g. a UUID>
+```
+
+Apply to **Production**, **Preview**, and **Development**.
+
+### 5. Deploy
+
+If using the Vercel CLI: `vercel --prod`. If using GitHub integration, push triggers the deploy. Either way, you'll get a URL like `pour-log-xyz.vercel.app`.
+
+### 6. Initialize the database
+
+Hit the init endpoint **once** in a browser to create the tables:
+
+```
+https://<your-vercel-url>/api/_init?secret=<your INIT_SECRET>
+```
+
+You should see `{"ok":true,"message":"schema ready"}`. Safe to call again — the SQL is idempotent.
+
+### 7. Point `truck.tscnj.com` at it
+
+In the Vercel project: **Settings → Domains → Add Domain → `truck.tscnj.com`**. Vercel will display the CNAME or A record to add at your DNS provider for `tscnj.com`. Once propagated (a few minutes), the domain is live with auto-managed HTTPS.
+
+## Verifying it works
+
+Open `truck.tscnj.com`. Sign in with two different browsers (or one phone + one laptop) using the same job. Start a pour in one — it should appear in the other within ~10 seconds via the polling loop. If it doesn't:
+
+- Check **Vercel → Logs** for any 500s
+- Confirm `/api/_init` returned ok
+- Make sure both browsers picked the same job from the dropdown
+
+## What's next (v2 work, not done)
+
+1. **Microsoft Entra auth** — register a single-page app in your tenant, paste the client ID into `SP_CONFIG.clientId` in `pour-log.html`. This both enables live SharePoint job-list fetching AND can gate access to the app itself.
+2. **Refactor frontend to use the relational endpoints** (`/api/lanes`, `/api/pours`, `/api/queue`, `/api/notes`) instead of the JSON-blob `/api/sync`. The endpoints are already written — the work is converting the frontend's per-mutation handlers to call them. Benefit: per-field conflict resolution and proper SQL reporting.
+3. **Excel export** — replace the `.txt` end-of-day download with `.xlsx` via SheetJS.
+4. **Truck stages** — split each pour into arrived → pouring → washing → released for productivity analytics.
+
+## Roll-back
+
+Vercel keeps every deploy. To undo a bad change: project → **Deployments** → pick a green deploy → **Promote to Production**.
