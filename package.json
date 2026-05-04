@@ -2,6 +2,7 @@
   "name": "pour-log",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Pour Log",
   "engines": { "node": ">=18" },
   "dependencies": {
