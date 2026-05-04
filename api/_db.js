@@ -1,8 +1,30 @@
 // Shared Postgres client + helpers for all API routes.
-// Vercel injects POSTGRES_URL automatically when a Postgres database is connected to the project.
-import { sql } from '@vercel/postgres';
+// Uses `pg` directly so it works with any Postgres URL (Supabase, Neon, RDS, etc.)
+import pg from 'pg';
+const { Pool } = pg;
 
-export { sql };
+// Pool reused across warm invocations (Vercel keeps the function alive briefly between calls).
+const pool = global.__pgPool || new Pool({
+  connectionString: process.env.POSTGRES_URL,
+  ssl: { rejectUnauthorized: false },
+});
+if (!global.__pgPool) global.__pgPool = pool;
+
+// Tagged-template `sql` function — same API the routes were already using:
+//   const r = await sql`SELECT ...`;
+//   r.rows[0].whatever
+export const sql = (strings, ...values) => {
+  let text = '';
+  const params = [];
+  strings.forEach((str, i) => {
+    text += str;
+    if (i < values.length) {
+      params.push(values[i]);
+      text += `$${params.length}`;
+    }
+  });
+  return pool.query(text, params);
+};
 
 // CORS / JSON response helpers — small wrapper to keep route code tidy.
 export function json(res, status, body) {
