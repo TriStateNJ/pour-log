@@ -82,6 +82,31 @@ label {
   display: block; font-size: 11px; color: var(--text-3); margin-bottom: 6px;
   text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
 }
+/* ===== Editable / read-only field cues =====
+   A small ✎ glyph marks every label whose value the operator can change, so it's
+   instantly clear which fields are inputs vs. computed/read-only displays. */
+.edit-mark {
+  display: inline-block; margin-left: 5px;
+  font-size: 9px; color: var(--text-4); font-weight: 600;
+  letter-spacing: 0; text-transform: none; opacity: 0.9;
+  vertical-align: 1px;
+}
+.edit-mark::before { content: '✎'; margin-right: 2px; font-size: 11px; }
+.readonly-mark {
+  display: inline-block; margin-left: 6px;
+  font-size: 9px; color: var(--text-4); font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase; opacity: 0.7;
+}
+/* Inline lane-name input gets a dashed border so users see it's editable
+   (it has the same font as a static heading without an input cue). */
+.lane-name-input {
+  border-style: dashed !important;
+  border-color: var(--border-strong) !important;
+}
+.lane-name-input:focus {
+  border-style: solid !important;
+  border-color: var(--primary) !important;
+}
 
 .btn {
   padding: 12px 18px; font-size: 15px; font-weight: 600; border: none;
@@ -513,10 +538,10 @@ label {
   <!-- QUEUE PAGE -->
   <div id="page-queue" class="page">
     <div class="queue-form">
-      <div><label>Truck #</label><input id="q-truck" type="text" placeholder="e.g. 1234" /></div>
-      <div><label>CY</label><input id="q-cy" type="number" step="0.5" placeholder="10" /></div>
-      <div><label>Supplier</label><input id="q-supplier" type="text" list="supplier-list" placeholder="e.g. Silvi" /></div>
-      <div><label>Mix Design</label><input id="q-mix" type="text" list="mix-list" placeholder="e.g. 4000 PSI" /></div>
+      <div><label>Truck # <span class="edit-mark">edit</span></label><input id="q-truck" type="text" inputmode="numeric" placeholder="e.g. 1234" /></div>
+      <div><label>CY <span class="edit-mark">edit</span></label><input id="q-cy" type="number" inputmode="decimal" step="0.5" placeholder="10" /></div>
+      <div><label>Supplier <span class="edit-mark">edit</span></label><input id="q-supplier" type="text" list="supplier-list" placeholder="e.g. Silvi" /></div>
+      <div><label>Mix Design <span class="edit-mark">edit</span></label><input id="q-mix" type="text" list="mix-list" placeholder="e.g. 4000 PSI" /></div>
       <button class="btn btn-primary btn-sm add-btn" onclick="addToQueue()">+ Add</button>
     </div>
     <p style="color:#94a3b8; font-size:13px; margin: 8px 0 14px;">
@@ -585,7 +610,10 @@ label {
     lanes: [],     // {id, name, equipment, active: {pourId, truck, cy, notes, startAt} | null}
     queue: [],     // {id, truck, cy, addedAt}
     history: [],   // {id, truck, cy, startAt, endAt, laneName, equipment, notes}
-    notes: []      // {id, text, ts}
+    notes: [],     // {id, text, ts}
+    // Sticky defaults: as the operator commits CY / supplier / mix on any pour, those values
+    // become the pre-fill for the next pour they start. Never locked — typing a new value overwrites.
+    pourDefaults: { cy: '', supplier: '', mix: '' }
   };
   let timerInterval = null;
   // localStorage + remote /api/sync (Vercel Postgres) for shared multi-device state.
@@ -593,6 +621,9 @@ label {
   // debounced and runs in the background. Polling keeps multiple operators on the
   // same job in near-real-time sync.
   const LS_KEY = 'truckTrackerState_v2';
+  // Tiny separate localStorage entry that survives logout — pre-fills the sign-on form
+  // with the last operator name + job so the next sign-in is one tap.
+  const LS_LAST_KEY = 'pourLogLastUser';
   const SYNC_API = '/api/sync';
   let _serverTs = 0;
   let _saveTimer = null;
@@ -646,10 +677,46 @@ label {
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return false;
       Object.assign(state, JSON.parse(raw));
+      // Backfill pourDefaults if loading older state that didn't have it yet.
+      if (!state.pourDefaults) state.pourDefaults = { cy: '', supplier: '', mix: '' };
       if (state.job) syncFromServer();
       startPolling();
       return !!state.operator;
     } catch(e) { return false; }
+  }
+
+  // Save just the last operator + job (NOT the full working state) so the next browser
+  // session can pre-fill the sign-on form. Survives logout, tab close, browser restart.
+  function saveLastUser() {
+    try {
+      localStorage.setItem(LS_LAST_KEY, JSON.stringify({
+        operator: state.operator || '',
+        job:      state.job      || ''
+      }));
+    } catch(e) {}
+  }
+
+  // Pre-fill the sign-on screen with the last operator + job. Called once at boot
+  // (after the job dropdown has loaded) and again at the end of logout().
+  function prefillSignon() {
+    let last = null;
+    try { last = JSON.parse(localStorage.getItem(LS_LAST_KEY) || 'null'); } catch(e) {}
+    if (!last) return;
+    const nameEl = document.getElementById('signon-name');
+    if (nameEl && !nameEl.value && last.operator) nameEl.value = last.operator;
+
+    if (!last.job) return;
+    const sel = document.getElementById('signon-job');
+    const inp = document.getElementById('signon-job-manual');
+    if (sel && [...sel.options].some(o => o.value === last.job)) {
+      sel.value = last.job;
+      sel.style.display = 'block';
+      if (inp) inp.style.display = 'none';
+    } else if (inp) {
+      inp.value = last.job;
+      inp.style.display = 'block';
+      if (sel) sel.style.display = 'none';
+    }
   }
   function id() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function fmtDuration(ms) {
@@ -853,6 +920,7 @@ label {
     if (state.lanes.length === 0) {
       state.lanes.push({ id: id(), name: 'Pump 1', equipment: 'Pump', active: null });
     }
+    saveLastUser();
     save(); showApp();
       syncFromServer();
     startPolling();
@@ -898,7 +966,10 @@ label {
       }
     }
 
-    // Pre-fill sign-on form for the next operator
+    // Persist last operator + job for next browser session (survives close/reopen).
+    saveLastUser();
+
+    // Pre-fill sign-on form for the next operator (same-session convenience)
     document.getElementById('signon-name').value = state.operator || '';
     const sel = document.getElementById('signon-job');
     const inp = document.getElementById('signon-job-manual');
@@ -918,6 +989,7 @@ label {
     state.history = [];
     state.notes = [];
     state.dayStart = null;
+    state.pourDefaults = { cy: '', supplier: '', mix: '' };
     save();
     document.getElementById('app').style.display = 'none';
     document.getElementById('signon-screen').style.display = 'block';
@@ -992,7 +1064,13 @@ label {
   function removeLane(lid) {
     const l = state.lanes.find(x => x.id === lid); if (!l) return;
     if (l.active) { alert('Stop the active pour before removing this lane.'); return; }
-    if (!confirm(`Remove lane "${l.name}"?`)) return;
+    const histCount = state.history.filter(h => h.laneName === l.name).length;
+    let msg = `Remove lane "${l.name}"?`;
+    if (histCount > 0) {
+      msg = `Remove lane "${l.name}"?\n\nThis lane has ${histCount} completed pour${histCount === 1 ? '' : 's'} today. Those pours stay in your history — only the lane card disappears from the active list.\n\nProceed?`;
+    }
+    if (!confirm(msg)) return;
+    if (histCount > 0 && !confirm(`Are you sure? "${l.name}" has ${histCount} pour${histCount === 1 ? '' : 's'} associated with it.`)) return;
     state.lanes = state.lanes.filter(x => x.id !== lid);
     save(); renderLanes(); renderBadges();
   }
@@ -1011,7 +1089,19 @@ label {
     const l = state.lanes.find(x => x.id === lid); if (!l) return;
     if (l.active) return;
     const now = Date.now();
-    l.active = { pourId: id(), truck: '', cy: '', notes: '', supplier: '', mix: '', arrivedAt: now, startAt: now };
+    // Pre-fill from sticky defaults — saves typing on the 5th truck of the day.
+    // Each field stays editable; if the operator types a different value it overwrites.
+    const def = state.pourDefaults || {};
+    l.active = {
+      pourId: id(),
+      truck: '',
+      cy:       def.cy       || '',
+      notes:    '',
+      supplier: def.supplier || '',
+      mix:      def.mix      || '',
+      arrivedAt: now,
+      startAt:   now
+    };
     save(); renderLanes(); renderStats();
     // focus the truck input so they can start typing
     setTimeout(() => {
@@ -1023,6 +1113,12 @@ label {
   function updateActiveField(lid, field, val) {
     const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
     l.active[field] = val;
+    // Live-update the sticky defaults: as soon as the operator commits a value to CY/supplier/mix,
+    // the next pour they start will pre-fill with this value.
+    if (field === 'cy' || field === 'supplier' || field === 'mix') {
+      if (!state.pourDefaults) state.pourDefaults = { cy: '', supplier: '', mix: '' };
+      state.pourDefaults[field] = val;
+    }
     save();
     // no full re-render — that would lose focus while typing
     renderStats();
@@ -1103,6 +1199,11 @@ label {
       laneName: l.name, equipment: l.equipment,
       supplier: a.supplier || '', mix: a.mix || '', notes: a.notes || ''
     });
+    // Lock in this pour's CY/supplier/mix as defaults for the next pour.
+    if (!state.pourDefaults) state.pourDefaults = { cy: '', supplier: '', mix: '' };
+    if (a.cy)       state.pourDefaults.cy       = a.cy;
+    if (a.supplier) state.pourDefaults.supplier = a.supplier;
+    if (a.mix)      state.pourDefaults.mix      = a.mix;
     l.active = null;
     save(); renderAll();
   }
@@ -1162,40 +1263,42 @@ label {
               </select>
             </div>
             <div class="lane-active">
-              <div class="timer" data-timer="${a.startAt}">${fmtDuration(elapsed)}</div>
+              <div class="timer" data-timer="${a.startAt}" title="Live elapsed time — read-only">${fmtDuration(elapsed)}</div>
               <div class="timer-sub">
-                arrived <input type="time" class="time-input"
+                arrived <input type="time" class="time-input" title="Tap to edit arrival time"
                   value="${fmtTimeForInput(a.arrivedAt || a.startAt)}"
                   onchange="setArrivalTime('${l.id}', this.value)" />
-                · started ${fmtTime(a.startAt)}
+                · started ${fmtTime(a.startAt)} <span class="readonly-mark">read-only</span>
               </div>
               <div class="lane-form">
                 <div>
-                  <label>Truck #</label>
+                  <label>Truck # <span class="edit-mark">edit</span></label>
                   <input class="truck-input" type="text" value="${escapeAttr(a.truck)}"
+                    inputmode="numeric"
                     placeholder="e.g. 1234"
                     oninput="updateActiveField('${l.id}','truck',this.value)" />
                 </div>
                 <div>
-                  <label>CY</label>
+                  <label>CY <span class="edit-mark">edit</span></label>
                   <input type="number" step="0.5" value="${escapeAttr(a.cy)}"
+                    inputmode="decimal"
                     placeholder="10"
                     oninput="updateActiveField('${l.id}','cy',this.value)" />
                 </div>
                 <div>
-                  <label>Supplier</label>
+                  <label>Supplier <span class="edit-mark">edit</span></label>
                   <input type="text" value="${escapeAttr(a.supplier || '')}" list="supplier-list"
                     placeholder="e.g. Silvi"
                     oninput="updateActiveField('${l.id}','supplier',this.value)" />
                 </div>
                 <div>
-                  <label>Mix Design</label>
+                  <label>Mix Design <span class="edit-mark">edit</span></label>
                   <input type="text" value="${escapeAttr(a.mix || '')}" list="mix-list"
                     placeholder="e.g. 4000 PSI"
                     oninput="updateActiveField('${l.id}','mix',this.value)" />
                 </div>
                 <div class="full">
-                  <label>Notes</label>
+                  <label>Notes <span class="edit-mark">edit</span></label>
                   <input type="text" value="${escapeAttr(a.notes)}"
                     placeholder="Slump, air, issues…"
                     oninput="updateActiveField('${l.id}','notes',this.value)" />
@@ -1408,7 +1511,9 @@ label {
   document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
 
   // ============ BOOT ============
-  loadJobs(false);
+  // Kick off the SharePoint job-list fetch (or fallback) — once it's populated,
+  // pre-fill the sign-on form with the last operator + job from a prior session.
+  Promise.resolve(loadJobs(false)).then(() => prefillSignon()).catch(() => prefillSignon());
   if (load()) showApp();
 </script>
 </body>
