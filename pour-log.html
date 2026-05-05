@@ -1353,6 +1353,8 @@ label {
     save();
     // no full re-render — that would lose focus while typing
     renderStats();
+    // Refresh the note-truck dropdown so the freshly-typed truck # is selectable right away.
+    if (field === 'truck') renderNoteTruckOptions();
   }
 
   // Edit the lane itself (name / equipment) without re-rendering — preserves focus on the input.
