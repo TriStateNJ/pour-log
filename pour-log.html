@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1208,11 +1209,30 @@ label {
     save(); renderAll();
   }
 
+  // ✕ button on a running lane: discards the in-progress pour (lane stays put).
+  // Two-step pattern (same as Reset Clock): first tap arms + shows a warning label, second tap
+  // within 4 seconds actually clears. Auto-disarms after 4s of no second tap.
+  const _pendingCancel = new Map();
   function cancelPour(lid) {
     const l = state.lanes.find(x => x.id === lid); if (!l || !l.active) return;
-    if (!confirm('Cancel this pour? It will NOT be saved to history.')) return;
-    l.active = null;
-    save(); renderLanes(); renderStats();
+    const armedAt = _pendingCancel.get(lid);
+    if (armedAt && Date.now() - armedAt < 4000) {
+      // Confirmed
+      _pendingCancel.delete(lid);
+      l.active = null;
+      save(); renderLanes(); renderStats();
+    } else {
+      // Arm — show warning label
+      _pendingCancel.set(lid, Date.now());
+      renderLanes();
+      setTimeout(() => {
+        const t = _pendingCancel.get(lid);
+        if (t && Date.now() - t >= 4000) {
+          _pendingCancel.delete(lid);
+          renderLanes();
+        }
+      }, 4100);
+    }
   }
 
   function assignFromQueueOpen(lid) {
@@ -1310,7 +1330,9 @@ label {
                   ? `<button class="btn btn-danger btn-sm" onclick="resetPourClock('${l.id}')">↻ Tap Again to Reset</button>`
                   : `<button class="btn btn-ghost btn-sm" onclick="resetPourClock('${l.id}')" title="Reset elapsed time to 00:00">↻ Reset Clock</button>`}
                 ${state.queue.length ? `<button class="btn btn-ghost btn-sm" onclick="assignFromQueueOpen('${l.id}')" title="Pick from queue">📋</button>` : ''}
-                <button class="btn btn-ghost btn-sm" onclick="cancelPour('${l.id}')" title="Cancel without saving">✕</button>
+                ${(_pendingCancel.has(l.id) && Date.now() - _pendingCancel.get(l.id) < 4000)
+                  ? `<button class="btn btn-danger btn-sm" onclick="cancelPour('${l.id}')" title="Tap again — the pour will be discarded">✕ Tap again to discard pour</button>`
+                  : `<button class="btn btn-ghost btn-sm" onclick="cancelPour('${l.id}')" title="Discard this pour (clock + entered fields). Lane stays.">✕</button>`}
               </div>
             </div>
           </div>`;
