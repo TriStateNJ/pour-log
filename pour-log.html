@@ -1638,7 +1638,7 @@ label {
                 ${(_pendingReset.has(l.id) && Date.now() - _pendingReset.get(l.id) < 4000)
                   ? `<button class="btn btn-danger btn-sm" onclick="resetPourClock('${l.id}')">↻ Tap Again to Reset</button>`
                   : `<button class="btn btn-ghost btn-sm" onclick="resetPourClock('${l.id}')" title="Reset elapsed time to 00:00">↻ Reset Clock</button>`}
-                ${state.queue.length ? `<button class="btn btn-ghost btn-sm" onclick="assignFromQueueOpen('${l.id}')" title="Pick from queue">📋</button>` : ''}
+                ${state.queue.length ? `<button class="btn btn-ghost btn-sm" onclick="assignFromQueueOpen('${l.id}')" title="Pick from queue">📋 Batched Trucks</button>` : ''}
                 ${(_pendingCancel.has(l.id) && Date.now() - _pendingCancel.get(l.id) < 4000)
                   ? `<button class="btn btn-danger btn-sm" onclick="cancelPour('${l.id}')" title="Tap again — the pour will be discarded">✕ Tap again to discard pour</button>`
                   : `<button class="btn btn-ghost btn-sm" onclick="cancelPour('${l.id}')" title="Discard this pour (clock + entered fields). Lane stays.">✕</button>`}
