@@ -991,7 +991,7 @@ label {
     { num: '901', name: 'Chapel Block North',                   address: '1225 Constitution Ave Philadelphia, PA 19112' },
     { num: '901', name: 'Chapel Block South',                   address: '1225 Constitution Ave Philadelphia, PA 19112' }
   ];
-  const JOBS_CACHE_KEY = 'truckTracker_jobsCache_v1';
+  const JOBS_CACHE_KEY = 'truckTracker_jobsCache_v2';  // bump when job shape changes
   let JOBS = [];
   let msalInstance = null;
 
@@ -1009,10 +1009,13 @@ label {
     const prev = sel.value;
     sel.innerHTML = '<option value="">— Select a job —</option>' +
       JOBS.map(j => {
-        const label = j.num ? `${j.num} — ${j.name}` : j.name;
-        const val = j.num ? `${j.num} — ${j.name}` : j.name;
+        // Display: "948 — NEP Power Supply Bloom Energy (Bloom)"
+        // The nickname is appended in parentheses if present.
+        const base = j.num ? `${j.num} — ${j.name}` : j.name;
+        const label = j.nickname ? `${base} (${j.nickname})` : base;
+        const val = base;  // value stays without nickname so saved state still matches
         const title = j.address ? ` title="${j.address.replace(/"/g,'&quot;')}"` : '';
-        return `<option value="${val.replace(/"/g,'&quot;')}"${title}>${label}</option>`;
+        return `<option value="${val.replace(/"/g,'&quot;')}"${title}>${label.replace(/"/g,'&quot;')}</option>`;
       }).join('');
     if (prev) sel.value = prev;
   }
@@ -1087,7 +1090,7 @@ label {
   }
 
   async function loadJobs(force) {
-    // 1. Try cache first (fast paint)
+    // 1. Try local cache first (fast paint)
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(JOBS_CACHE_KEY) || 'null');
@@ -1099,24 +1102,25 @@ label {
         }
       } catch(e){}
     }
-    // 2. Try live fetch
-    if (SP_CONFIG.clientId) {
-      try {
-        setJobStatus('loading…', 'info');
-        const fresh = await fetchJobsFromSharePoint();
+    // 2. Try live fetch from /api/jobs (Vercel endpoint backed by Smartsheet)
+    try {
+      setJobStatus('loading…', 'info');
+      const r = await fetch('/api/jobs', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const fresh = (data && Array.isArray(data.jobs)) ? data.jobs : [];
+      if (fresh.length) {
         JOBS = fresh;
         renderJobOptions();
         localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify({ ts: Date.now(), jobs: fresh }));
         setJobStatus(`live · ${fresh.length} jobs`, 'ok');
         return;
-      } catch (err) {
-        console.warn('SharePoint fetch failed:', err);
-        setJobStatus('SharePoint unavailable — using built-in list', 'warn');
       }
-    } else {
-      setJobStatus('using built-in list (configure Entra app for live fetch)', 'info');
+    } catch (err) {
+      console.warn('/api/jobs fetch failed:', err);
+      setJobStatus('live fetch unavailable — using built-in list', 'warn');
     }
-    // 3. Fallback to embedded snapshot
+    // 3. Fallback to embedded snapshot (last-known good list if both cache and API fail)
     if (!JOBS.length) {
       JOBS = FALLBACK_JOBS.slice();
       renderJobOptions();
