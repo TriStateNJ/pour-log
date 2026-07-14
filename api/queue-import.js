@@ -72,9 +72,26 @@ export default async function handler(req, res) {
       }
 
       let inserted = 0;
+      let skipped  = 0;
       const errors = [];
       for (const t of trucks) {
         try {
+          // Dedup: skip if a row with the same ticket_no + batch_time already exists.
+          // Same truck can legit run multiple times per day; each run has its own ticket.
+          // Same ticket at same batch_time = real duplicate (retry, extra subscription, etc.)
+          if (t.ticketNo && t.batchTime) {
+            const dup = await sql`
+              SELECT id FROM staged_imports
+              WHERE ticket_no = ${t.ticketNo}
+                AND batch_time = ${t.batchTime}
+              LIMIT 1
+            `;
+            if (dup.rows.length > 0) {
+              skipped++;
+              continue;
+            }
+          }
+
           await sql`
             INSERT INTO staged_imports (
               source, silvi_job, truck, cy, supplier, mix,
@@ -103,7 +120,7 @@ export default async function handler(req, res) {
           errors.push(err.message);
         }
       }
-      return json(res, 200, { ok: true, inserted, errors });
+      return json(res, 200, { ok: true, inserted, skipped, errors });
     }
 
     return json(res, 405, { error: 'method_not_allowed' });
