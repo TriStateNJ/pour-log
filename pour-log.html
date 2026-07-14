@@ -2021,4 +2021,162 @@ label {
         i.ticket_no ? `ticket #${escapeHtml(i.ticket_no)}` : ''
       ].filter(Boolean);
       const mapBtn = isUnmatched && i.silvi_job
-        ? `<butto
+        ? `<button class="btn-map" onclick="mapSilviJob('${escapeAttr(i.silvi_job)}')" title="Save this Silvi job → your current TSCNJ job (permanent mapping)">↦ Map to my job</button>`
+        : '';
+      return `
+        <div class="staged-truck-card">
+          <div class="info">
+            <div><span class="silvi-badge">Silvi</span><span class="num">#${escapeHtml(i.truck)}</span></div>
+            <div class="meta">${bits.map(b => `<span>${b}</span>`).join('<span>·</span>')}</div>
+          </div>
+          <div class="actions">
+            ${mapBtn}
+            <button class="btn btn-success btn-sm" onclick="acceptStagedImport(${i.id})" title="Move into pending queue">✓ Accept</button>
+            <button class="btn btn-ghost btn-sm" onclick="discardStagedImport(${i.id})" title="Remove without adding">✕ Discard</button>
+          </div>
+        </div>`;
+    };
+
+    let html = matched.map(i => renderCard(i, false)).join('');
+
+    if (unmatched.length > 0) {
+      const opened = !!state._unmatchedOpen;
+      html += `
+        <div class="staged-unmatched-toggle" onclick="toggleUnmatchedImports()">
+          ${opened ? '−' : '+'} ${unmatched.length} import${unmatched.length === 1 ? '' : 's'} need${unmatched.length === 1 ? 's' : ''} job assignment
+        </div>
+        ${opened ? `<div class="staged-unmatched-list">${unmatched.map(i => renderCard(i, true)).join('')}</div>` : ''}
+      `;
+    }
+
+    list.innerHTML = html;
+  }
+
+  function toggleUnmatchedImports() {
+    state._unmatchedOpen = !state._unmatchedOpen;
+    renderStagedImports();
+  }
+
+  async function acceptStagedImport(impId) {
+    const imp = (state.stagedImports || []).find(x => x.id === impId);
+    if (!imp) return;
+
+    // Add to the operator's live queue as a normal queued truck
+    state.queue.push({
+      id: id(),
+      truck:    imp.truck,
+      cy:       parseFloat(imp.cy) || 0,
+      supplier: imp.supplier || 'Silvi',
+      mix:      imp.mix || '',
+      addedAt:  Date.now(),
+      source:   'silvi-import',
+      silviTicket: imp.ticket_no,
+      silviOrder:  imp.order_no,
+      silviJob:    imp.silvi_job
+    });
+    save();
+
+    // Tell the backend so other operators stop seeing it
+    try {
+      await fetch(`/api/queue-import?action=accept&id=${impId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job: state.job })
+      });
+    } catch (e) { console.warn('Accept sync failed', e); }
+
+    // Locally drop it from the pending list so the UI updates immediately
+    state.stagedImports = (state.stagedImports || []).filter(x => x.id !== impId);
+    renderStagedImports();
+    renderQueue();
+    renderBadges();
+  }
+
+  async function discardStagedImport(impId) {
+    if (!confirm('Discard this Silvi import? It will not appear in the queue.')) return;
+    try {
+      await fetch(`/api/queue-import?action=discard&id=${impId}`, { method: 'POST' });
+    } catch (e) { console.warn('Discard sync failed', e); }
+    state.stagedImports = (state.stagedImports || []).filter(x => x.id !== impId);
+    renderStagedImports();
+    renderBadges();
+  }
+
+  // ============ TICK ============
+  // ============ SUN MODE ============
+  // High-contrast theme variant for outdoor use. Persists in localStorage.
+  function initSunMode() {
+    try {
+      const saved = localStorage.getItem('pourLogSunMode');
+      if (saved === 'on') document.documentElement.setAttribute('data-theme', 'sun');
+    } catch(e) {}
+  }
+  function toggleSunMode() {
+    const cur = document.documentElement.getAttribute('data-theme') === 'sun';
+    if (cur) {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('pourLogSunMode', 'off'); } catch(e) {}
+    } else {
+      document.documentElement.setAttribute('data-theme', 'sun');
+      try { localStorage.setItem('pourLogSunMode', 'on'); } catch(e) {}
+    }
+  }
+  initSunMode();
+
+  // ============ HERO TOTALS ============
+  // Live "today" snapshot: total CY, truck count, average cycle time, currently-pouring count.
+  // Updates with every tick + every state change.
+  function renderHero() {
+    const elCy     = document.getElementById('hero-cy');
+    const elTrucks = document.getElementById('hero-trucks');
+    const elCycle  = document.getElementById('hero-cycle');
+    const elActive = document.getElementById('hero-active');
+    const elActiveStat = document.getElementById('hero-active-stat');
+    if (!elCy) return; // not on app screen yet
+
+    const t = computeTotals();
+    const activeCount = state.lanes.filter(l => l.active).length;
+    // Live CY: completed + entered-on-active so the number ticks up in near real time
+    let liveCy = parseFloat(t.cy) || 0;
+    state.lanes.forEach(l => { if (l.active) liveCy += parseFloat(l.active.cy) || 0; });
+    const avgMs = t.trucks > 0 ? t.ms / t.trucks : 0;
+
+    elCy.innerHTML     = liveCy.toFixed(1) + '<span class="unit">CY</span>';
+    elTrucks.textContent = t.trucks;
+    elCycle.textContent  = avgMs > 0 ? fmtDuration(avgMs) : '—';
+    elActive.textContent = activeCount;
+    if (elActiveStat) elActiveStat.classList.toggle('is-active', activeCount > 0);
+  }
+
+  function tick() {
+    document.querySelectorAll('[data-timer]').forEach(el => {
+      const start = parseInt(el.getAttribute('data-timer'), 10);
+      el.textContent = fmtDuration(Date.now() - start);
+    });
+    renderStats();
+    renderHero();
+  }
+
+  function renderBadges() {
+    document.getElementById('badge-lanes').textContent = state.lanes.length;
+    const stagedCount = (state.stagedImports || []).length;
+    document.getElementById('badge-queue').textContent = state.queue.length + stagedCount;
+    document.getElementById('badge-history').textContent = state.history.length;
+  }
+  function renderAll() {
+    renderLanes(); renderQueue(); renderHistory(); renderEquipStats(); renderNotes(); renderStats(); renderBadges(); renderHero(); renderNoteTruckOptions(); renderStagedImports();
+  }
+
+  function closeModal(mid) { document.getElementById(mid).classList.remove('show'); }
+  document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
+
+  // ============ BOOT ============
+  // Kick off the SharePoint job-list fetch (or fallback) — once it's populated,
+  // pre-fill the sign-on form with the last operator + job from a prior session.
+  Promise.resolve(loadJobs(false)).then(() => prefillSignon()).catch(() => prefillSignon());
+  // Kick off first staged-imports fetch so Silvi trucks show up on load, not after the first 10s poll.
+  fetchStagedImports();
+  if (load()) showApp();
+</script>
+</body>
+</html>
