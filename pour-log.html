@@ -629,6 +629,51 @@ label {
   display: flex; flex-wrap: wrap; gap: 2px 8px;
 }
 .staged-truck-card .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Unmatched imports (no auto-match to any TSCNJ job) */
+.staged-unmatched-toggle {
+  display: block;
+  padding: 10px 14px;
+  margin-top: 12px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--t), color var(--t), border-color var(--t);
+}
+.staged-unmatched-toggle:hover {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  border-color: var(--brand-tint);
+}
+.staged-unmatched-list {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong);
+}
+.staged-unmatched-list .staged-truck-card {
+  border-left-color: var(--text-4);
+  opacity: 0.85;
+}
+.staged-unmatched-list .staged-truck-card .silvi-badge { background: var(--text-3); }
+.btn-map {
+  background: var(--info);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 40px;
+}
+.btn-map:hover { background: var(--info); opacity: 0.9; }
 /* Layout for the note input row: text input grows, truck dropdown is fixed-width, Add stays right */
 .note-form {
   display: grid;
@@ -908,7 +953,10 @@ label {
     // become the pre-fill for the next pour they start. Never locked — typing a new value overwrites.
     pourDefaults: { cy: '', supplier: '', mix: '' },
     // Silvi email imports waiting for operator review. Populated by fetchStagedImports(), NOT synced.
-    stagedImports: []
+    stagedImports: [],
+    // Explicit Silvi-job → TSCNJ-job-number mappings. Populated by fetchJobMap(), NOT synced.
+    // Example: { "TARGET PARKESBU-SF": "940", "DPMC EMERGENCY -SF": "941" }
+    silviJobMap: {}
   };
   let timerInterval = null;
   // localStorage + remote /api/sync (Vercel Postgres) for shared multi-device state.
@@ -1843,36 +1891,127 @@ label {
     if (cur && list.includes(cur)) sel.value = cur;
   }
 
+  // ============ SILVI JOB MAP (hybrid auto + manual matching) ============
+  // Explicit mappings from Silvi's job names (e.g., "TARGET PARKESBU-SF") to TSCNJ job numbers
+  // (e.g., "940"). Once mapped, that Silvi job always routes to that TSCNJ job.
+  async function fetchJobMap() {
+    try {
+      const r = await fetch('/api/job-map', { cache: 'no-store' });
+      if (!r.ok) return;
+      const data = await r.json();
+      state.silviJobMap = (data && data.mappings) ? data.mappings : {};
+    } catch (e) { /* silently ignore */ }
+  }
+
+  // Fuzzy match: does the Silvi job name overlap meaningfully with the TSCNJ job's name/nickname?
+  // Simple keyword overlap — case-insensitive, ignores short words.
+  function fuzzyMatchJob(silviJobName, tscnjJob) {
+    if (!silviJobName || !tscnjJob) return false;
+    const silvi = silviJobName.toLowerCase().replace(/[-_]/g, ' ');
+    const nickname = (tscnjJob.nickname || '').toLowerCase();
+    const name = (tscnjJob.name || '').toLowerCase();
+
+    // Direct substring match (either direction)
+    if (nickname && (silvi.includes(nickname) || nickname.includes(silvi))) return true;
+    if (name && silvi.includes(name)) return true;
+
+    // Word overlap: any significant word (>= 3 chars) shared between silvi job and TSCNJ name/nickname
+    const silviWords = silvi.split(/\s+/).filter(w => w.length >= 3);
+    const jobWords = (name + ' ' + nickname).split(/\s+/).filter(w => w.length >= 3);
+    return silviWords.some(sw => jobWords.some(jw => jw === sw || jw.startsWith(sw) || sw.startsWith(jw)));
+  }
+
+  // Given a Silvi import, determine which TSCNJ job number it belongs to (if any).
+  // 1. Explicit map wins  2. Fuzzy match against the current job list  3. null if unmatched.
+  function resolveJobForImport(imp) {
+    if (!imp || !imp.silvi_job) return null;
+    // Explicit mapping (case-sensitive — Silvi's format is consistent)
+    if (state.silviJobMap && state.silviJobMap[imp.silvi_job]) {
+      return state.silviJobMap[imp.silvi_job];
+    }
+    // Fuzzy match against all known TSCNJ jobs
+    if (Array.isArray(JOBS)) {
+      const hit = JOBS.find(j => fuzzyMatchJob(imp.silvi_job, j));
+      if (hit) return hit.num;
+    }
+    return null;
+  }
+
+  // Save a mapping: "this Silvi job goes to my currently-signed-in TSCNJ job."
+  async function mapSilviJob(silviJobName) {
+    if (!state.job) { alert('Sign into a TSCNJ job first.'); return; }
+    const currentJobNum = (state.job.match(/^(\d+)/) || [])[1];
+    if (!currentJobNum) { alert('Could not determine current TSCNJ job number.'); return; }
+    if (!confirm(`Map Silvi "${silviJobName}" → TSCNJ job ${currentJobNum}?\nFuture Silvi trucks for "${silviJobName}" will automatically route here.`)) return;
+    try {
+      const r = await fetch('/api/job-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          silvi_job: silviJobName,
+          tscnj_job_num: currentJobNum,
+          created_by: state.operator
+        })
+      });
+      if (!r.ok) throw new Error('save failed');
+      // Refresh local map + re-render
+      await fetchJobMap();
+      renderStagedImports();
+    } catch (e) {
+      alert('Failed to save mapping: ' + e.message);
+    }
+  }
+
   // ============ STAGED IMPORTS (Silvi emails) ============
-  // Global (not per-job): all operators see the same pending-imports pile. Whichever operator
-  // accepts a truck first adds it to their job's queue and clears it from the global list on next fetch.
+  // Fetches both the imports and the current job-mapping table, then splits imports into
+  // "matched to current job" and "unmatched" (or matched to other jobs — hidden by default).
   async function fetchStagedImports() {
     try {
+      // Fetch job map first so renderStagedImports has current mappings when it runs
+      await fetchJobMap();
       const r = await fetch('/api/queue-import', { cache: 'no-store' });
       if (!r.ok) return;
       const data = await r.json();
       state.stagedImports = Array.isArray(data.imports) ? data.imports : [];
       renderStagedImports();
       renderBadges();
-    } catch (e) { /* silently ignore — offline or endpoint not deployed yet */ }
+    } catch (e) { /* silently ignore */ }
   }
 
+  // Renders the Pending Imports section. Splits imports into three buckets based on job:
+  //   - matched:   imports resolved (explicit map OR fuzzy match) to the CURRENT TSCNJ job → shown at top
+  //   - other:     imports resolved to a DIFFERENT TSCNJ job → hidden (belong to other operators)
+  //   - unmatched: imports we couldn't resolve to any job → shown at bottom with "Map to my job" button
   function renderStagedImports() {
     const section = document.getElementById('staged-imports-section');
     const list    = document.getElementById('staged-imports-list');
     const count   = document.getElementById('staged-count');
     if (!section || !list) return;
     const imports = state.stagedImports || [];
+    const currentJobNum = state.job ? ((state.job.match(/^(\d+)/) || [])[1] || null) : null;
 
-    if (imports.length === 0) {
+    // Bucket imports
+    const matched = [];
+    const unmatched = [];
+    for (const imp of imports) {
+      const resolvedJob = resolveJobForImport(imp);
+      if (resolvedJob === null) {
+        unmatched.push(imp);
+      } else if (resolvedJob === currentJobNum) {
+        matched.push(imp);
+      }
+      // else: matched to some other job — hidden (visible to that job's operator instead)
+    }
+
+    // Nothing to show for this job? Hide the whole section.
+    if (matched.length === 0 && unmatched.length === 0) {
       section.style.display = 'none';
       return;
     }
-
     section.style.display = 'block';
-    if (count) count.textContent = imports.length;
+    if (count) count.textContent = matched.length + unmatched.length;
 
-    list.innerHTML = imports.map(i => {
+    const renderCard = (i, isUnmatched = false) => {
       const bits = [
         `${parseFloat(i.cy || 0)} CY`,
         i.mix       ? escapeHtml(i.mix)       : '',
@@ -1881,140 +2020,5 @@ label {
         i.batch_time ? `batched ${escapeHtml(i.batch_time)}` : '',
         i.ticket_no ? `ticket #${escapeHtml(i.ticket_no)}` : ''
       ].filter(Boolean);
-      return `
-        <div class="staged-truck-card">
-          <div class="info">
-            <div><span class="silvi-badge">Silvi</span><span class="num">#${escapeHtml(i.truck)}</span></div>
-            <div class="meta">${bits.map(b => `<span>${b}</span>`).join('<span>·</span>')}</div>
-          </div>
-          <div class="actions">
-            <button class="btn btn-success btn-sm" onclick="acceptStagedImport(${i.id})" title="Move into pending queue">✓ Accept</button>
-            <button class="btn btn-ghost btn-sm" onclick="discardStagedImport(${i.id})" title="Remove without adding">✕ Discard</button>
-          </div>
-        </div>`;
-    }).join('');
-  }
-
-  async function acceptStagedImport(impId) {
-    const imp = (state.stagedImports || []).find(x => x.id === impId);
-    if (!imp) return;
-
-    // Add to the operator's live queue as a normal queued truck
-    state.queue.push({
-      id: id(),
-      truck:    imp.truck,
-      cy:       parseFloat(imp.cy) || 0,
-      supplier: imp.supplier || 'Silvi',
-      mix:      imp.mix || '',
-      addedAt:  Date.now(),
-      source:   'silvi-import',
-      silviTicket: imp.ticket_no,
-      silviOrder:  imp.order_no,
-      silviJob:    imp.silvi_job
-    });
-    save();
-
-    // Tell the backend so other operators stop seeing it
-    try {
-      await fetch(`/api/queue-import?action=accept&id=${impId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job: state.job })
-      });
-    } catch (e) { console.warn('Accept sync failed', e); }
-
-    // Locally drop it from the pending list so the UI updates immediately
-    state.stagedImports = (state.stagedImports || []).filter(x => x.id !== impId);
-    renderStagedImports();
-    renderQueue();
-    renderBadges();
-  }
-
-  async function discardStagedImport(impId) {
-    if (!confirm('Discard this Silvi import? It will not appear in the queue.')) return;
-    try {
-      await fetch(`/api/queue-import?action=discard&id=${impId}`, { method: 'POST' });
-    } catch (e) { console.warn('Discard sync failed', e); }
-    state.stagedImports = (state.stagedImports || []).filter(x => x.id !== impId);
-    renderStagedImports();
-    renderBadges();
-  }
-
-  // ============ TICK ============
-  // ============ SUN MODE ============
-  // High-contrast theme variant for outdoor use. Persists in localStorage.
-  function initSunMode() {
-    try {
-      const saved = localStorage.getItem('pourLogSunMode');
-      if (saved === 'on') document.documentElement.setAttribute('data-theme', 'sun');
-    } catch(e) {}
-  }
-  function toggleSunMode() {
-    const cur = document.documentElement.getAttribute('data-theme') === 'sun';
-    if (cur) {
-      document.documentElement.removeAttribute('data-theme');
-      try { localStorage.setItem('pourLogSunMode', 'off'); } catch(e) {}
-    } else {
-      document.documentElement.setAttribute('data-theme', 'sun');
-      try { localStorage.setItem('pourLogSunMode', 'on'); } catch(e) {}
-    }
-  }
-  initSunMode();
-
-  // ============ HERO TOTALS ============
-  // Live "today" snapshot: total CY, truck count, average cycle time, currently-pouring count.
-  // Updates with every tick + every state change.
-  function renderHero() {
-    const elCy     = document.getElementById('hero-cy');
-    const elTrucks = document.getElementById('hero-trucks');
-    const elCycle  = document.getElementById('hero-cycle');
-    const elActive = document.getElementById('hero-active');
-    const elActiveStat = document.getElementById('hero-active-stat');
-    if (!elCy) return; // not on app screen yet
-
-    const t = computeTotals();
-    const activeCount = state.lanes.filter(l => l.active).length;
-    // Live CY: completed + entered-on-active so the number ticks up in near real time
-    let liveCy = parseFloat(t.cy) || 0;
-    state.lanes.forEach(l => { if (l.active) liveCy += parseFloat(l.active.cy) || 0; });
-    const avgMs = t.trucks > 0 ? t.ms / t.trucks : 0;
-
-    elCy.innerHTML     = liveCy.toFixed(1) + '<span class="unit">CY</span>';
-    elTrucks.textContent = t.trucks;
-    elCycle.textContent  = avgMs > 0 ? fmtDuration(avgMs) : '—';
-    elActive.textContent = activeCount;
-    if (elActiveStat) elActiveStat.classList.toggle('is-active', activeCount > 0);
-  }
-
-  function tick() {
-    document.querySelectorAll('[data-timer]').forEach(el => {
-      const start = parseInt(el.getAttribute('data-timer'), 10);
-      el.textContent = fmtDuration(Date.now() - start);
-    });
-    renderStats();
-    renderHero();
-  }
-
-  function renderBadges() {
-    document.getElementById('badge-lanes').textContent = state.lanes.length;
-    const stagedCount = (state.stagedImports || []).length;
-    document.getElementById('badge-queue').textContent = state.queue.length + stagedCount;
-    document.getElementById('badge-history').textContent = state.history.length;
-  }
-  function renderAll() {
-    renderLanes(); renderQueue(); renderHistory(); renderEquipStats(); renderNotes(); renderStats(); renderBadges(); renderHero(); renderNoteTruckOptions(); renderStagedImports();
-  }
-
-  function closeModal(mid) { document.getElementById(mid).classList.remove('show'); }
-  document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
-
-  // ============ BOOT ============
-  // Kick off the SharePoint job-list fetch (or fallback) — once it's populated,
-  // pre-fill the sign-on form with the last operator + job from a prior session.
-  Promise.resolve(loadJobs(false)).then(() => prefillSignon()).catch(() => prefillSignon());
-  // Kick off first staged-imports fetch so Silvi trucks show up on load, not after the first 10s poll.
-  fetchStagedImports();
-  if (load()) showApp();
-</script>
-</body>
-</html>
+      const mapBtn = isUnmatched && i.silvi_job
+        ? `<butto
